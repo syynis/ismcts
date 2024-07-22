@@ -16,14 +16,8 @@ impl<M: MCTS> MCTSManager<M>
 where
     ThreadData<M>: Default,
 {
-    pub fn new(
-        state: M::State,
-        manager: M,
-        policy: M::Select,
-        eval: M::Eval,
-        table: M::TT,
-    ) -> Self {
-        let search_tree = SearchTree::new(state, manager, policy, eval, table);
+    pub fn new(state: M::State, manager: M, policy: M::Select, eval: M::Eval) -> Self {
+        let search_tree = SearchTree::new(state, manager, policy, eval);
 
         Self {
             search_tree,

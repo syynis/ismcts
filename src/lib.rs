@@ -1,16 +1,13 @@
 use search::{MoveInfo, SearchHandle};
-use transposition::TranspositionTable;
 
 pub mod manager;
 pub mod policies;
 pub mod search;
-pub mod transposition;
 
 pub trait MCTS: Sized + Sync {
     type State: GameState + Sync;
     type Eval: Evaluator<Self> + Sync;
     type Select: Policy<Self> + Sync;
-    type TT: TranspositionTable<Self>;
 
     fn virtual_loss(&self) -> i64 {
         0

@@ -1,9 +1,4 @@
-use mcts::{
-    manager::MCTSManager,
-    policies::UCTPolicy,
-    transposition::{ApproxTable, TranspositionHash},
-    *,
-};
+use mcts::{manager::MCTSManager, policies::UCTPolicy, *};
 
 #[derive(Clone, Debug)]
 struct CountingGame {
@@ -70,12 +65,6 @@ impl GameState for CountingGame {
     fn randomize_determination(&mut self, observer: Self::Player) {}
 }
 
-impl TranspositionHash for CountingGame {
-    fn hash(&self) -> u64 {
-        self.state as u64
-    }
-}
-
 struct MyEvaluator;
 
 impl Evaluator<MyMCTS> for MyEvaluator {
@@ -112,7 +101,6 @@ impl MCTS for MyMCTS {
     type State = CountingGame;
     type Eval = MyEvaluator;
     type Select = UCTPolicy;
-    type TT = ApproxTable<Self>;
 
     fn virtual_loss(&self) -> i64 {
         1000
@@ -124,13 +112,7 @@ fn main() {
         state: 0,
         goal: 1337,
     };
-    let mut mcts = MCTSManager::new(
-        game,
-        MyMCTS,
-        UCTPolicy(1.0),
-        MyEvaluator,
-        ApproxTable::new(1048576),
-    );
+    let mut mcts = MCTSManager::new(game, MyMCTS, UCTPolicy(1.0), MyEvaluator);
     mcts.playout_n_parallel(5_000_000_0, 8);
     let pv: Vec<_> = mcts
         .pv_states(100)

@@ -9,10 +9,7 @@ use std::{
 use itertools::Itertools;
 use smallvec::SmallVec;
 
-use crate::{
-    Evaluator, GameState, Move, MoveEval, Player, Policy, StateEval, ThreadData,
-    TranspositionTable, MCTS,
-};
+use crate::{Evaluator, GameState, Move, MoveEval, Player, Policy, StateEval, ThreadData, MCTS};
 
 pub struct SearchTree<M: MCTS> {
     root: Node<M>,
@@ -20,13 +17,10 @@ pub struct SearchTree<M: MCTS> {
     policy: M::Select,
     eval: M::Eval,
     manager: M,
-    table: M::TT,
 
     num_nodes: AtomicUsize,
     orphaned: Mutex<Vec<Box<Node<M>>>>,
     expansion_contention_events: AtomicUsize,
-    tt_hits: AtomicUsize,
-    delayed_tt_hits: AtomicUsize,
 }
 
 impl<M: MCTS> SearchTree<M>
@@ -69,13 +63,7 @@ fn is_cycle<T>(past: &[&T], current: &T) -> bool {
 }
 
 impl<M: MCTS> SearchTree<M> {
-    pub fn new(
-        state: M::State,
-        manager: M,
-        policy: M::Select,
-        eval: M::Eval,
-        table: M::TT,
-    ) -> Self {
+    pub fn new(state: M::State, manager: M, policy: M::Select, eval: M::Eval) -> Self {
         let root = create_node(&eval, &policy, &state, None, true);
         Self {
             root,
@@ -83,27 +71,18 @@ impl<M: MCTS> SearchTree<M> {
             policy,
             eval,
             manager,
-            table,
             num_nodes: 1.into(),
             orphaned: Mutex::new(Vec::new()),
             expansion_contention_events: 0.into(),
-            tt_hits: 0.into(),
-            delayed_tt_hits: 0.into(),
         }
     }
 
     pub fn reset(self) -> Self {
-        Self::new(
-            self.root_state,
-            self.manager,
-            self.policy,
-            self.eval,
-            self.table,
-        )
+        Self::new(self.root_state, self.manager, self.policy, self.eval)
     }
 
     pub fn new_root(self, new_state: M::State) -> Self {
-        Self::new(new_state, self.manager, self.policy, self.eval, self.table)
+        Self::new(new_state, self.manager, self.policy, self.eval)
     }
 
     pub fn spec(&self) -> &M {
@@ -149,10 +128,6 @@ impl<M: MCTS> SearchTree<M> {
             players.push(state.current_player());
             path.push(choice);
 
-            assert!(path.len() <= self.manager.max_playout_length(),
-                "playout length exceeded maximum of {} (maybe the transposition table is creating an infinite loop?)",
-                self.manager.max_playout_length());
-
             state.make_move(&choice.mv);
             let (new_node, new_did_we_create) = self.descend(&state, choice, node, tld);
             node = new_node;
@@ -195,24 +170,6 @@ impl<M: MCTS> SearchTree<M> {
             return unsafe { (&*child, false) };
         }
 
-        if let Some(node) = self.table.lookup(state) {
-            let child = choice.child.compare_exchange(
-                null_mut(),
-                node as *const _ as *mut _,
-                Ordering::Relaxed,
-                Ordering::Relaxed,
-            );
-            match child {
-                Ok(child) => {
-                    self.tt_hits.fetch_add(1, Ordering::Relaxed);
-                    return (node, false);
-                }
-                Err(child) => {
-                    return unsafe { (&*child, false) };
-                }
-            }
-        }
-
         let created = create_node(
             &self.eval,
             &self.policy,
@@ -234,17 +191,6 @@ impl<M: MCTS> SearchTree<M> {
                 drop(Box::from_raw(created));
                 return (&*other_child, false);
             }
-        }
-
-        if let Some(existing) = self.table.insert(state, unsafe { &*created }) {
-            self.delayed_tt_hits.fetch_add(1, Ordering::Relaxed);
-            let existing_ptr = existing as *const _ as *mut _;
-            choice.child.store(existing_ptr, Ordering::Relaxed);
-            self.orphaned
-                .lock()
-                .unwrap()
-                .push(unsafe { Box::from_raw(created) });
-            return (existing, false);
         }
 
         choice.owned.store(true, Ordering::Relaxed);
@@ -326,8 +272,6 @@ impl<M: MCTS> SearchTree<M> {
 
     pub fn print_stats(&self) {
         println!("{} nodes", self.num_nodes.load(Ordering::Relaxed));
-        println!("{} tt hits", self.tt_hits.load(Ordering::Relaxed));
-        println!("{} dtt hits", self.delayed_tt_hits.load(Ordering::Relaxed));
         println!(
             "{} e/c events",
             self.expansion_contention_events.load(Ordering::Relaxed)

@@ -553,7 +553,6 @@ impl MCTS for AI {
     type State = LandsGame;
     type Eval = GameEval;
     type Select = UCTPolicy;
-    type TT = ();
 
     fn virtual_loss(&self) -> i64 {
         0
@@ -562,7 +561,7 @@ impl MCTS for AI {
 
 fn main() {
     let mut input = String::new();
-    let mut mcts = MCTSManager::new(LandsGame::new(1335), AI, UCTPolicy(1.0), GameEval, ());
+    let mut mcts = MCTSManager::new(LandsGame::new(1335), AI, UCTPolicy(1.0), GameEval);
     println!("{}", mcts.tree().root_state());
 
     loop {
