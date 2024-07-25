@@ -48,11 +48,6 @@ impl GameState for CountingGame {
         }
     }
 
-    fn all_moves(&self) -> Self::MoveList {
-        let mut moves = Vec::new();
-        moves
-    }
-
     fn make_move(&mut self, mov: &Self::Move) {
         match *mov {
             Move::Add(x) => self.state += x,
@@ -62,7 +57,7 @@ impl GameState for CountingGame {
         }
     }
 
-    fn randomize_determination(&mut self, observer: Self::Player) {}
+    fn randomize_determination(&mut self, _observer: Self::Player) {}
 }
 
 struct MyEvaluator;
@@ -70,14 +65,21 @@ struct MyEvaluator;
 impl Evaluator<MyMCTS> for MyEvaluator {
     type StateEval = f64;
 
+    fn state_eval_new(
+        &self,
+        state: &<MyMCTS as MCTS>::State,
+        _handle: Option<search::SearchHandle<MyMCTS>>,
+    ) -> Self::StateEval {
+        1.0 - ((state.state.abs() as f64 - state.goal as f64).abs() / 1_000_000.0)
+    }
+
     fn eval_new(
         &self,
         state: &<MyMCTS as MCTS>::State,
         moves: &MoveList<MyMCTS>,
-        _handle: Option<search::SearchHandle<MyMCTS>>,
+        handle: Option<search::SearchHandle<MyMCTS>>,
     ) -> (Vec<MoveEval<MyMCTS>>, Self::StateEval) {
-        let eval = 1.0 - ((state.state.abs() as f64 - state.goal as f64).abs() / 1_000_000.0);
-        (vec![(); moves.len()], eval)
+        (vec![(); moves.len()], self.state_eval_new(state, handle))
     }
 
     fn eval_existing(
@@ -117,7 +119,7 @@ fn main() {
     let pv: Vec<_> = mcts
         .pv_states(100)
         .into_iter()
-        .map(|(mv, state)| state)
+        .map(|(_mv, state)| state)
         .collect();
     println!("Principal variation: {:?}", pv);
     println!("Principal variation length: {:?}", pv.len());

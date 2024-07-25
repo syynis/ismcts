@@ -388,38 +388,6 @@ impl GameState for LandsGame {
         moves
     }
 
-    fn all_moves(&self) -> Self::MoveList {
-        let mut moves = Vec::new();
-
-        if self.won(self.opponent()) {
-            return Vec::new();
-        }
-
-        match &self.phase {
-            Phase::Play => {
-                moves.push(Move::Blue);
-                moves.push(Move::Black);
-                moves.push(Move::Red);
-                moves.push(Move::Green);
-                moves.push(Move::Draw);
-                moves.push(Move::Discard(None));
-
-                CARDS.iter().for_each(|c| {
-                    moves.push(Move::Destroy(*c));
-                    moves.push(Move::Revive(*c));
-                });
-            }
-            Phase::Respond(_, _) => {
-                moves.push(Move::Counter(None));
-                CARDS.iter().for_each(|c| {
-                    moves.push(Move::Counter(Some(*c)));
-                    moves.push(Move::Discard(Some(*c)))
-                });
-            }
-        }
-        moves
-    }
-
     fn make_move(&mut self, mv: &Self::Move) {
         // println!("{}", self);
         // println!("{:?} can play {:?}", self.to_move, self.legal_moves());
@@ -495,12 +463,11 @@ struct GameEval;
 impl Evaluator<AI> for GameEval {
     type StateEval = i64;
 
-    fn eval_new(
+    fn state_eval_new(
         &self,
-        state: &LandsGame,
-        moves: &Vec<Move>,
+        state: &<AI as MCTS>::State,
         _handle: Option<search::SearchHandle<AI>>,
-    ) -> (Vec<MoveEval<AI>>, Self::StateEval) {
+    ) -> Self::StateEval {
         let won = state.won(state.to_move) as i64 * 1_000;
         let devotion = *state.in_play[state.to_move as usize]
             .values()
@@ -525,8 +492,16 @@ impl Evaluator<AI> for GameEval {
                     .values()
                     .sum::<u8>() as i64
                 - state.hand(state.opponent()).values().sum::<u8>() as i64);
-        let moveeval = vec![(); moves.len()];
-        (moveeval, devotion + domain + card_advantage + won)
+        devotion + domain + card_advantage + won
+    }
+
+    fn eval_new(
+        &self,
+        state: &LandsGame,
+        moves: &Vec<Move>,
+        handle: Option<search::SearchHandle<AI>>,
+    ) -> (Vec<MoveEval<AI>>, Self::StateEval) {
+        (vec![(); moves.len()], self.state_eval_new(&state, handle))
     }
 
     fn eval_existing(

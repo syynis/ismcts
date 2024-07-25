@@ -49,7 +49,6 @@ pub trait GameState: Clone {
 
     fn current_player(&self) -> Self::Player;
     fn legal_moves(&self) -> Self::MoveList;
-    fn all_moves(&self) -> Self::MoveList;
     fn make_move(&mut self, mv: &Self::Move);
     fn randomize_determination(&mut self, observer: Self::Player);
 }
