@@ -9,7 +9,7 @@ use std::{
 use itertools::Itertools;
 use smallvec::SmallVec;
 
-use crate::{Evaluator, GameState, Move, MoveEval, Player, Policy, StateEval, ThreadData, MCTS};
+use crate::{Evaluator, GameState, Move, Player, Policy, StateEval, ThreadData, MCTS};
 
 pub struct SearchTree<M: MCTS> {
     root: Node<M>,
@@ -28,7 +28,8 @@ where
     Move<M>: std::fmt::Debug,
 {
     pub fn display_moves(&self) {
-        let mut moves: Vec<&MoveInfo<M>> = self.root.moves.iter().collect();
+        let inner = self.root.moves.read().unwrap();
+        let mut moves: Vec<&MoveInfo<M>> = inner.iter().collect();
         moves.sort_by_key(|x| -(x.visits() as i64));
         for mv in moves {
             println!("{:?}", mv.mv);
@@ -38,24 +39,27 @@ where
 
 fn create_node<M: MCTS>(
     eval: &M::Eval,
-    policy: &M::Select,
+    _policy: &M::Select,
     state: &M::State,
     handle: Option<SearchHandle<M>>,
-    determined: bool,
+    _determined: bool,
 ) -> Node<M> {
-    let moves = if determined {
-        state.legal_moves()
-    } else {
-        state.all_moves()
-    };
-    let (move_eval, state_eval) = eval.eval_new(state, &moves, handle);
-    policy.validate_evaluations(&move_eval);
-    let moves = moves
-        .into_iter()
-        .zip(move_eval)
-        .map(|(m, e)| MoveInfo::new(m, e))
-        .collect();
-    Node::new(moves, state_eval)
+    // let moves = if determined {
+    //     state.legal_moves()
+    // } else {
+    //     state.all_moves()
+    // };
+    // let (move_eval, state_eval) = eval.eval_new(state, &moves, handle);
+    // policy.validate_evaluations(&move_eval);
+    // let moves = moves
+    //     .into_iter()
+    //     .zip(move_eval)
+    //     .map(|(m, e)| MoveInfo::new(m, e))
+    //     .collect();
+    // Node::new(moves, state_eval)
+
+    let eval = eval.state_eval_new(state, handle);
+    Node::empty(eval)
 }
 
 fn is_cycle<T>(past: &[&T], current: &T) -> bool {
@@ -102,31 +106,47 @@ impl<M: MCTS> SearchTree<M> {
 
         let mut state = self.root_state.clone();
         state.randomize_determination(state.current_player());
-        let mut path: SmallVec<&MoveInfo<M>, 64> = SmallVec::new();
+        let mut path_indices: SmallVec<usize, 64> = SmallVec::new();
         let mut node_path: SmallVec<&Node<M>, 64> = SmallVec::new();
         let mut players: SmallVec<Player<M>, 64> = SmallVec::new();
         let mut did_we_create = false;
         let mut node = &self.root;
         loop {
-            if path.len() >= self.manager.max_playout_length() {
+            if path_indices.len() >= self.manager.max_playout_length() {
                 break;
             }
 
-            let available_moves = state.legal_moves();
-            let moves = available_moves
+            let legal_moves = state.legal_moves();
+            if legal_moves.clone().into_iter().count() == 0 {
+                break;
+            };
+            // All moves that are legal now but have never been explored yet
+            let untried = legal_moves
+                .clone()
                 .into_iter()
-                .filter_map(|mv| node.moves.iter().find(|child_mv| child_mv.mv == mv))
+                .filter(|lmv| node.moves.read().unwrap().iter().any(|c| c.mv == *lmv))
                 .collect_vec();
-            if moves.is_empty() {
-                break;
+
+            if !untried.is_empty() {
+                node.moves
+                    .write()
+                    .unwrap()
+                    .push(MoveInfo::new(untried[0].clone()));
             }
 
-            let choice = self
+            let node_moves = node.moves.read().unwrap();
+            // If we have no untried moves get the children of all the legal moves
+            let moves = legal_moves
+                .into_iter()
+                .filter_map(|mv| node_moves.iter().find(|child_mv| child_mv.mv == mv))
+                .collect_vec();
+
+            let (child_idx, choice) = self
                 .policy
                 .choose(moves.iter().cloned(), self.make_handle(node, tld));
             choice.stats.down(&self.manager);
             players.push(state.current_player());
-            path.push(choice);
+            path_indices.push(child_idx);
 
             state.make_move(&choice.mv);
             let (new_node, new_did_we_create) = self.descend(&state, choice, node, tld);
@@ -154,7 +174,7 @@ impl<M: MCTS> SearchTree<M> {
             )
         };
         let eval = new_eval.as_ref().unwrap_or(&node.eval);
-        self.backpropagation(&path, &node_path, &players, eval);
+        self.backpropagation(&path_indices, &node_path, &players, eval);
         true
     }
 
@@ -200,7 +220,7 @@ impl<M: MCTS> SearchTree<M> {
 
     fn backpropagation(
         &self,
-        path: &[&MoveInfo<M>],
+        path: &[usize],
         nodes: &[&Node<M>],
         players: &[Player<M>],
         eval: &StateEval<M>,
@@ -208,7 +228,9 @@ impl<M: MCTS> SearchTree<M> {
         for ((move_info, player), node) in path.iter().zip(players.iter()).zip(nodes.iter()).rev() {
             let eval_value = self.eval.make_relativ_player(eval, player);
             node.stats.up(&self.manager, eval_value);
-            move_info.stats.replace(&node.stats);
+            node.moves.write().unwrap()[*move_info]
+                .stats
+                .replace(&node.stats);
         }
     }
 
@@ -240,6 +262,8 @@ impl<M: MCTS> SearchTree<M> {
         while curr_state.legal_moves().into_iter().count() > 0 && res.len() < num_moves {
             if let Some(choice) = curr
                 .moves
+                .read()
+                .unwrap()
                 .iter()
                 .filter_map(|mv| {
                     curr_state
@@ -252,7 +276,7 @@ impl<M: MCTS> SearchTree<M> {
                             mv.child.load(Ordering::SeqCst) as *const Node<M>,
                         ))
                 })
-                .max_by_key(|(mv, visits, child)| *visits)
+                .max_by_key(|(_, visits, _)| *visits)
             {
                 res.push(choice.0.clone());
                 curr_state.make_move(&choice.0);
@@ -282,14 +306,14 @@ impl<M: MCTS> SearchTree<M> {
 
 pub struct MoveInfo<M: MCTS> {
     mv: Move<M>,
-    move_select: MoveEval<M>,
+    // move_select: MoveEval<M>,
     child: AtomicPtr<Node<M>>,
     owned: AtomicBool,
     stats: NodeStats,
 }
 
 pub struct Node<M: MCTS> {
-    moves: Vec<MoveInfo<M>>,
+    moves: RwLock<Vec<MoveInfo<M>>>,
     eval: StateEval<M>,
     stats: NodeStats,
 }
@@ -301,10 +325,10 @@ struct NodeStats {
 }
 
 impl<M: MCTS> MoveInfo<M> {
-    fn new(mv: Move<M>, move_select: MoveEval<M>) -> Self {
+    fn new(mv: Move<M> /*, move_select: MoveEval<M>*/) -> Self {
         Self {
             mv,
-            move_select,
+            // move_select,
             child: AtomicPtr::default(),
             owned: AtomicBool::new(false),
             stats: NodeStats::new(),
@@ -315,12 +339,16 @@ impl<M: MCTS> MoveInfo<M> {
         &self.mv
     }
 
-    pub fn move_select(&self) -> &MoveEval<M> {
-        &self.move_select
-    }
+    // pub fn move_select(&self) -> &MoveEval<M> {
+    //     &self.move_select
+    // }
 
     pub fn visits(&self) -> u64 {
         self.stats.visits.load(Ordering::Relaxed) as u64
+    }
+
+    pub fn availability(&self) -> u64 {
+        self.stats.availability_count.load(Ordering::Relaxed) as u64
     }
 
     pub fn sum_rewards(&self) -> i64 {
@@ -352,13 +380,21 @@ impl<M: MCTS> Drop for MoveInfo<M> {
 }
 
 impl<M: MCTS> Node<M> {
-    fn new(moves: Vec<MoveInfo<M>>, eval: StateEval<M>) -> Self {
+    fn empty(eval: StateEval<M>) -> Self {
         Self {
-            moves,
+            moves: Vec::new().into(),
             eval,
             stats: NodeStats::new(),
         }
     }
+
+    // fn new(moves: Vec<MoveInfo<M>>, eval: StateEval<M>) -> Self {
+    //     Self {
+    //         moves: moves.into(),
+    //         eval,
+    //         stats: NodeStats::new(),
+    //     }
+    // }
 }
 
 impl NodeStats {
@@ -419,23 +455,35 @@ pub struct NodeHandle<'a, M: 'a + MCTS> {
 }
 
 impl<'a, M: MCTS> NodeHandle<'a, M> {
-    pub fn moves(&self) -> Moves<M> {
-        Moves {
-            iter: self.node.moves.iter(),
-        }
+    pub fn moves(&self) -> Vec<Move<M>> {
+        self.node
+            .moves
+            .read()
+            .unwrap()
+            .iter()
+            .map(|x| x.mv.clone())
+            .collect_vec()
+    }
+
+    pub fn stats(&self) -> Vec<NonAtomicNodeStats> {
+        self.node
+            .moves
+            .read()
+            .unwrap()
+            .iter()
+            .map(|x| NonAtomicNodeStats {
+                visits: x.visits(),
+                availability_count: x.availability(),
+                sum_evaluations: x.sum_rewards(),
+            })
+            .collect_vec()
     }
 }
 
-#[derive(Clone)]
-pub struct Moves<'a, M: 'a + MCTS> {
-    iter: std::slice::Iter<'a, MoveInfo<M>>,
-}
-
-impl<'a, M: 'a + MCTS> Iterator for Moves<'a, M> {
-    type Item = &'a MoveInfo<M>;
-    fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next()
-    }
+pub struct NonAtomicNodeStats {
+    pub visits: u64,
+    pub availability_count: u64,
+    pub sum_evaluations: i64,
 }
 
 struct IncreaseSentinel<'a> {

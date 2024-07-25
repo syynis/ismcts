@@ -2,7 +2,7 @@ use rand::{Rng, SeedableRng};
 use rand_xorshift::XorShiftRng;
 
 use crate::{
-    search::{self, SearchHandle},
+    search::{self},
     Policy, MCTS,
 };
 
@@ -17,7 +17,7 @@ impl<M: MCTS<Select = Self>> Policy<M> for UCBPolicy {
         &self,
         moves: MoveIter,
         mut handle: search::SearchHandle<M>,
-    ) -> &'a search::MoveInfo<M>
+    ) -> (usize, &'a search::MoveInfo<M>)
     where
         MoveIter: Iterator<Item = &'a search::MoveInfo<M>> + Clone,
     {
@@ -40,7 +40,7 @@ impl<M: MCTS<Select = Self>> Policy<M> for UCTPolicy {
         &self,
         moves: MoveIter,
         mut handle: search::SearchHandle<M>,
-    ) -> &'a search::MoveInfo<M>
+    ) -> (usize, &'a search::MoveInfo<M>)
     where
         MoveIter: Iterator<Item = &'a search::MoveInfo<M>> + Clone,
     {
@@ -102,51 +102,51 @@ impl AlphaGoPolicy {
     }
 }
 
-impl<M: MCTS<Select = Self>> Policy<M> for AlphaGoPolicy {
-    type MoveSelect = f64;
-    type ThreadLocalData = PolicyRng;
+// impl<M: MCTS<Select = Self>> Policy<M> for AlphaGoPolicy {
+//     type MoveSelect = f64;
+//     type ThreadLocalData = PolicyRng;
 
-    fn choose<'a, MoveIter>(
-        &self,
-        moves: MoveIter,
-        mut handle: SearchHandle<M>,
-    ) -> &'a search::MoveInfo<M>
-    where
-        MoveIter: Iterator<Item = &'a search::MoveInfo<M>> + Clone,
-    {
-        let total_visits = moves.clone().map(|x| x.visits()).sum::<u64>() + 1;
-        let sqrt_total_visits = (total_visits as f64).sqrt();
-        let explore_coef = self.exploration_constant * sqrt_total_visits;
-        handle
-            .thread_data()
-            .policy_data
-            .select_by_key(moves, |mov| {
-                let sum_rewards = mov.sum_rewards() as f64;
-                let child_visits = mov.visits();
-                let policy_evaln = *mov.move_select();
-                (sum_rewards + explore_coef * policy_evaln) * self.reciprocal(child_visits as usize)
-            })
-            .unwrap()
-    }
+//     fn choose<'a, MoveIter>(
+//         &self,
+//         moves: MoveIter,
+//         mut handle: SearchHandle<M>,
+//     ) -> &'a search::MoveInfo<M>
+//     where
+//         MoveIter: Iterator<Item = &'a Arc<search::MoveInfo<M>>> + Clone,
+//     {
+//         let total_visits = moves.clone().map(|x| x.visits()).sum::<u64>() + 1;
+//         let sqrt_total_visits = (total_visits as f64).sqrt();
+//         let explore_coef = self.exploration_constant * sqrt_total_visits;
+//         handle
+//             .thread_data()
+//             .policy_data
+//             .select_by_key(moves, |mov| {
+//                 let sum_rewards = mov.sum_rewards() as f64;
+//                 let child_visits = mov.visits();
+//                 let policy_evaln = *mov.move_select();
+//                 (sum_rewards + explore_coef * policy_evaln) * self.reciprocal(child_visits as usize)
+//             })
+//             .unwrap()
+//     }
 
-    fn validate_evaluations(&self, evalns: &[f64]) {
-        for &x in evalns {
-            assert!(
-                x >= -1e-6,
-                "Move evaluation is {} (must be non-negative)",
-                x
-            );
-        }
-        if !evalns.is_empty() {
-            let evaln_sum: f64 = evalns.iter().sum();
-            assert!(
-                (evaln_sum - 1.0).abs() < 0.1,
-                "Sum of evaluations is {} (should sum to 1)",
-                evaln_sum
-            );
-        }
-    }
-}
+//     fn validate_evaluations(&self, evalns: &[f64]) {
+//         for &x in evalns {
+//             assert!(
+//                 x >= -1e-6,
+//                 "Move evaluation is {} (must be non-negative)",
+//                 x
+//             );
+//         }
+//         if !evalns.is_empty() {
+//             let evaln_sum: f64 = evalns.iter().sum();
+//             assert!(
+//                 (evaln_sum - 1.0).abs() < 0.1,
+//                 "Sum of evaluations is {} (should sum to 1)",
+//                 evaln_sum
+//             );
+//         }
+//     }
+// }
 
 #[derive(Clone)]
 pub struct PolicyRng {
@@ -159,15 +159,19 @@ impl PolicyRng {
         Self { rng }
     }
 
-    pub fn select_random<T, Iter>(&mut self, mut elts: Iter) -> Option<T>
+    pub fn select_random<T, Iter>(&mut self, elts: Iter) -> Option<(usize, T)>
     where
         Iter: Iterator<Item = T> + Clone,
     {
         let len = elts.clone().count();
-        elts.nth(self.rng.gen_range(0..len))
+        elts.enumerate().nth(self.rng.gen_range(0..len))
     }
 
-    pub fn select_by_key<T, Iter, KeyFn>(&mut self, elts: Iter, mut key_fn: KeyFn) -> Option<T>
+    pub fn select_by_key<T, Iter, KeyFn>(
+        &mut self,
+        elts: Iter,
+        mut key_fn: KeyFn,
+    ) -> Option<(usize, T)>
     where
         Iter: Iterator<Item = T>,
         KeyFn: FnMut(&T) -> f64,
@@ -175,16 +179,16 @@ impl PolicyRng {
         let mut choice = None;
         let mut num_optimal: u32 = 0;
         let mut best_so_far: f64 = f64::NEG_INFINITY;
-        for elt in elts {
+        for (idx, elt) in elts.enumerate() {
             let score = key_fn(&elt);
             if score > best_so_far {
-                choice = Some(elt);
+                choice = Some((idx, elt));
                 num_optimal = 1;
                 best_so_far = score;
             } else if score == best_so_far {
                 num_optimal += 1;
                 if self.rng.gen_bool(1.0 / num_optimal as f64) {
-                    choice = Some(elt);
+                    choice = Some((idx, elt));
                 }
             }
         }

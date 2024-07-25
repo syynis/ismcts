@@ -1,9 +1,7 @@
 use std::sync::atomic::{AtomicIsize, Ordering};
 
-use itertools::Itertools;
-
 use crate::{
-    search::{MoveInfoHandle, SearchTree},
+    search::{NonAtomicNodeStats, SearchTree},
     GameState, Move, ThreadData, MCTS,
 };
 
@@ -98,10 +96,10 @@ where
     }
 
     pub fn moves(&self) -> Vec<Move<M>> {
-        self.tree()
-            .root()
-            .moves()
-            .map(|m| m.get_move().clone())
-            .collect_vec()
+        self.tree().root().moves()
+    }
+
+    pub fn stats(&self) -> Vec<NonAtomicNodeStats> {
+        self.tree().root().stats()
     }
 }
