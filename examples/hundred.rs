@@ -115,7 +115,7 @@ fn main() {
         goal: 1337,
     };
     let mut mcts = MCTSManager::new(game, MyMCTS, UCTPolicy(1.0), MyEvaluator);
-    mcts.playout_n_parallel(5_000_000_0, 8);
+    mcts.playout_n_parallel(25_000_000, 16);
     let pv: Vec<_> = mcts
         .pv_states(100)
         .into_iter()

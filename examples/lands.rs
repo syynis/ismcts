@@ -536,33 +536,39 @@ impl MCTS for AI {
 
 fn main() {
     let mut input = String::new();
-    let mut mcts = MCTSManager::new(LandsGame::new(1335), AI, UCTPolicy(1.0), GameEval);
+    let mut mcts = MCTSManager::new(LandsGame::new(1335), AI, UCTPolicy(2.0), GameEval);
     println!("{}", mcts.tree().root_state());
 
     loop {
         if io::stdin().read_line(&mut input).is_ok() {
             if input == "m\n" {
-                mcts.tree().display_moves();
+                mcts.tree().legal_moves();
                 println!("{}", mcts.tree().root_state());
+            } else if input == "lm\n" {
+                println!("{:?}", mcts.tree().root_state().legal_moves());
             } else if input == "pv\n" {
                 let pv = mcts.pv(500);
                 println!("{:?}", pv);
-            } else if input == "mm\n" {
+            } else if input == "bm\n" {
                 if let Some(best_move) = mcts.best_move() {
                     println!("Make move {:?}", best_move);
                     mcts = mcts.make_move(best_move);
                 }
+            } else if input == "adv\n" {
+                if let Some(best_move) = mcts.best_move() {
+                    println!("Make move {:?}", best_move);
+                    mcts.advance(best_move);
+                }
             } else if input == "pmm\n" {
                 let legal_moves = mcts.tree().root_state().legal_moves();
                 if legal_moves.len() == 1 {
-                    let best_move = legal_moves.first().unwrap();
-                    println!("Make move {:?}", best_move);
-                    mcts = mcts.make_move(*best_move);
+                    println!("Make move {:?}", legal_moves[0]);
+                    mcts.advance(legal_moves[0]);
                 } else {
                     mcts.playout_n_parallel(2_500_000, 8);
                     if let Some(best_move) = mcts.best_move() {
                         println!("Make move {:?}", best_move);
-                        mcts = mcts.make_move(best_move);
+                        mcts.advance(best_move);
                     }
                 }
                 println!("{}", mcts.tree().root_state());
@@ -573,6 +579,9 @@ fn main() {
                 println!("{}", mcts.tree().root_state());
             } else if input == "stats\n" {
                 mcts.print_stats();
+                for (s, m) in mcts.stats().iter().zip(mcts.moves().iter()) {
+                    println!("move {:?} stats {:?}", s, m);
+                }
             } else if input == "pvs\n" {
                 mcts.pv_states(500)
                     .iter()
@@ -584,11 +593,13 @@ fn main() {
                         println!("{}", s.1);
                     });
             } else if input == "p\n" {
-                mcts.playout_n_parallel(5_000_000, 8);
+                mcts.playout_n_parallel(1_000_000, 8);
                 // mcts.playout_n(1);
                 println!("playout");
             } else if input == "p1\n" {
                 mcts.playout_n(1);
+                // mcts.playout_n(1);
+                println!("playout");
             } else if input == "k\n" {
                 mcts.tree().root_state().print_knowledge();
             } else if input == "q\n" {

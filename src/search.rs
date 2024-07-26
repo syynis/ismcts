@@ -1,4 +1,5 @@
 use std::{
+    mem::replace,
     ptr::null_mut,
     sync::{
         atomic::{AtomicBool, AtomicI64, AtomicPtr, AtomicUsize, Ordering},
@@ -35,6 +36,20 @@ where
             println!("{:?}", mv.mv);
         }
     }
+
+    pub fn legal_moves(&self) {
+        let inner = self.root.moves.read().unwrap();
+        let legal = self.root_state.legal_moves();
+
+        let mut moves: Vec<&MoveInfo<M>> = inner
+            .iter()
+            .filter(|x| legal.clone().into_iter().any(|l| x.mv == l))
+            .collect();
+        moves.sort_by_key(|x| -(x.visits() as i64));
+        for mv in moves {
+            println!("{:?}", mv.mv);
+        }
+    }
 }
 
 fn create_node<M: MCTS>(
@@ -62,10 +77,6 @@ fn create_node<M: MCTS>(
     Node::empty(eval)
 }
 
-fn is_cycle<T>(past: &[&T], current: &T) -> bool {
-    past.iter().any(|x| std::ptr::eq(*x, current))
-}
-
 impl<M: MCTS> SearchTree<M> {
     pub fn new(state: M::State, manager: M, policy: M::Select, eval: M::Eval) -> Self {
         let root = create_node(&eval, &policy, &state, None, true);
@@ -89,6 +100,29 @@ impl<M: MCTS> SearchTree<M> {
         Self::new(new_state, self.manager, self.policy, self.eval)
     }
 
+    pub fn advance(&mut self, mv: &Move<M>) {
+        // advance state
+        let mut new_state = self.root_state.clone();
+        new_state.make_move(mv);
+        self.root_state = new_state;
+
+        let child = {
+            let children = self.root.moves.read().unwrap();
+            // Find the child corresponding to the move we played
+            let child = &children.iter().find(|x| x.mv == *mv).unwrap().child;
+            // Load raw pointer
+            let child_ptr = child.load(Ordering::Relaxed);
+            unsafe { std::ptr::read(child_ptr) }
+        };
+
+        let old = std::mem::replace(&mut self.root, child);
+        self.orphaned.lock().unwrap().push(Box::new(old));
+        if self.root.moves.is_poisoned() {
+            println!("poison");
+        }
+        self.root.moves.clear_poison()
+    }
+
     pub fn spec(&self) -> &M {
         &self.manager
     }
@@ -107,7 +141,7 @@ impl<M: MCTS> SearchTree<M> {
         let mut state = self.root_state.clone();
         state.randomize_determination(state.current_player());
         let mut path_indices: SmallVec<usize, 64> = SmallVec::new();
-        let mut node_path: SmallVec<&Node<M>, 64> = SmallVec::new();
+        let mut node_path: SmallVec<(&Node<M>, &Node<M>), 64> = SmallVec::new();
         let mut players: SmallVec<Player<M>, 64> = SmallVec::new();
         let mut did_we_create = false;
         let mut node = &self.root;
@@ -117,14 +151,14 @@ impl<M: MCTS> SearchTree<M> {
             }
 
             let legal_moves = state.legal_moves();
-            if legal_moves.clone().into_iter().count() == 0 {
-                break;
-            };
             // All moves that are legal now but have never been explored yet
             let untried = legal_moves
                 .clone()
                 .into_iter()
-                .filter(|lmv| node.moves.read().unwrap().iter().any(|c| c.mv == *lmv))
+                .filter(|lmv| {
+                    let n = node.moves.read().unwrap();
+                    n.is_empty() || !n.iter().any(|c| c.mv == *lmv)
+                })
                 .collect_vec();
 
             if !untried.is_empty() {
@@ -141,6 +175,10 @@ impl<M: MCTS> SearchTree<M> {
                 .filter_map(|mv| node_moves.iter().find(|child_mv| child_mv.mv == mv))
                 .collect_vec();
 
+            if moves.is_empty() {
+                break;
+            }
+
             let (child_idx, choice) = self
                 .policy
                 .choose(moves.iter().cloned(), self.make_handle(node, tld));
@@ -150,14 +188,10 @@ impl<M: MCTS> SearchTree<M> {
 
             state.make_move(&choice.mv);
             let (new_node, new_did_we_create) = self.descend(&state, choice, node, tld);
+            node_path.push((node, new_node));
             node = new_node;
             did_we_create = new_did_we_create;
 
-            if is_cycle(&node_path, node) {
-                break;
-            }
-
-            node_path.push(node);
             node.stats.down(&self.manager);
             if node.stats.visits.load(Ordering::Relaxed)
                 <= self.manager.visits_before_expansion() as usize
@@ -221,16 +255,18 @@ impl<M: MCTS> SearchTree<M> {
     fn backpropagation(
         &self,
         path: &[usize],
-        nodes: &[&Node<M>],
+        nodes: &[(&Node<M>, &Node<M>)],
         players: &[Player<M>],
         eval: &StateEval<M>,
     ) {
-        for ((move_info, player), node) in path.iter().zip(players.iter()).zip(nodes.iter()).rev() {
+        for ((move_info, player), (parent, child)) in
+            path.iter().zip(players.iter()).zip(nodes.iter()).rev()
+        {
             let eval_value = self.eval.make_relativ_player(eval, player);
-            node.stats.up(&self.manager, eval_value);
-            node.moves.write().unwrap()[*move_info]
+            child.stats.up(&self.manager, eval_value);
+            parent.moves.read().unwrap()[*move_info]
                 .stats
-                .replace(&node.stats);
+                .replace(&child.stats);
         }
     }
 
@@ -480,6 +516,7 @@ impl<'a, M: MCTS> NodeHandle<'a, M> {
     }
 }
 
+#[derive(Debug)]
 pub struct NonAtomicNodeStats {
     pub visits: u64,
     pub availability_count: u64,

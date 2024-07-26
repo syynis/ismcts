@@ -91,6 +91,10 @@ where
         }
     }
 
+    pub fn advance(&mut self, mv: Move<M>) {
+        self.search_tree.advance(&mv);
+    }
+
     pub fn best_move(&self) -> Option<Move<M>> {
         self.pv(1).first().cloned()
     }
