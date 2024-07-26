@@ -593,7 +593,7 @@ fn main() {
                         println!("{}", s.1);
                     });
             } else if input == "p\n" {
-                mcts.playout_n_parallel(1_000_000, 8);
+                mcts.playout_n_parallel(10_000_000, 8);
                 // mcts.playout_n(1);
                 println!("playout");
             } else if input == "p1\n" {

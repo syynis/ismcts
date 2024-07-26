@@ -161,15 +161,14 @@ impl<M: MCTS> SearchTree<M> {
                 })
                 .collect_vec();
 
-            if !untried.is_empty() {
-                node.moves
-                    .write()
-                    .unwrap()
-                    .push(MoveInfo::new(untried[0].clone()));
+            // Expand all untried nodes to children
+            for u in untried {
+                node.moves.write().unwrap().push(MoveInfo::new(u));
             }
 
             let node_moves = node.moves.read().unwrap();
-            // If we have no untried moves get the children of all the legal moves
+
+            // Get the children corresponding to all legal moves
             let moves = legal_moves
                 .into_iter()
                 .filter_map(|mv| node_moves.iter().find(|child_mv| child_mv.mv == mv))
@@ -177,6 +176,11 @@ impl<M: MCTS> SearchTree<M> {
 
             if moves.is_empty() {
                 break;
+            }
+
+            // Increment availability count for each legal move we have in the current determinization
+            for m in moves.iter() {
+                m.stats.increment_available();
             }
 
             let (child_idx, choice) = self
@@ -440,6 +444,10 @@ impl NodeStats {
             availability_count: 0.into(),
             visits: 0.into(),
         }
+    }
+
+    fn increment_available(&self) {
+        self.availability_count.fetch_add(1, Ordering::Relaxed);
     }
 
     fn down<M: MCTS>(&self, manager: &M) {
