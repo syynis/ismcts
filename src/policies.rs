@@ -44,19 +44,21 @@ impl<M: MCTS<Select = Self>> Policy<M> for UCTPolicy {
     where
         MoveIter: Iterator<Item = &'a search::MoveInfo<M>> + Clone,
     {
-        let total_visits = moves.clone().map(|x| x.visits()).sum::<u64>();
-        let adjusted_total = (total_visits + 1) as f64;
-        let ln_adjusted_total = adjusted_total.ln();
+        // let total_visits = moves.clone().map(|x| x.visits()).sum::<u64>();
+        // let adjusted_total = (total_visits + 1) as f64;
+        // let ln_adjusted_total = adjusted_total.ln();
         handle
             .thread_data()
             .policy_data
             .select_by_key(moves, |mov| {
                 let sum_rewards = mov.sum_rewards();
                 let child_visits = mov.visits();
+                let available = mov.availability();
                 if child_visits == 0 {
                     f64::INFINITY
                 } else {
-                    let explore_term = 2.0 * (ln_adjusted_total / child_visits as f64).sqrt();
+                    let explore_term =
+                        2.0 * ((available as f64 + 1.0).ln() / child_visits as f64).sqrt();
                     let mean_action_value = sum_rewards as f64 / child_visits as f64;
                     self.0 * explore_term + mean_action_value
                 }

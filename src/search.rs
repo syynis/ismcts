@@ -1,5 +1,4 @@
 use std::{
-    mem::replace,
     ptr::null_mut,
     sync::{
         atomic::{AtomicBool, AtomicI64, AtomicPtr, AtomicUsize, Ordering},
@@ -388,7 +387,7 @@ impl<M: MCTS> SearchTree<M> {
         println!("{} orphaned", self.orphaned.lock().unwrap().len());
 
         for (s, m) in self.root().stats().iter().zip(self.root().moves().iter()) {
-            println!("move {:?} stats {:?}", s, m);
+            println!("{:?} {:?}", s, m);
         }
     }
 }
@@ -558,26 +557,30 @@ impl<'a, M: MCTS> NodeHandle<'a, M> {
             .collect_vec()
     }
 
-    pub fn stats(&self) -> Vec<NonAtomicNodeStats> {
+    pub fn stats(&self) -> Vec<ComputedNodeStats> {
         self.node
             .moves
             .read()
             .unwrap()
             .iter()
-            .map(|x| NonAtomicNodeStats {
+            .map(|x| ComputedNodeStats {
                 visits: x.visits(),
                 availability_count: x.availability(),
                 sum_evaluations: x.sum_rewards(),
+                mean_action_value: x.sum_rewards() as f64 / x.visits() as f64,
+                availability: ((1.0 + x.availability() as f64).ln() / x.visits() as f64).sqrt(),
             })
             .collect_vec()
     }
 }
 
 #[derive(Debug)]
-pub struct NonAtomicNodeStats {
+pub struct ComputedNodeStats {
     pub visits: u64,
     pub availability_count: u64,
     pub sum_evaluations: i64,
+    pub mean_action_value: f64,
+    pub availability: f64,
 }
 
 struct IncreaseSentinel<'a> {

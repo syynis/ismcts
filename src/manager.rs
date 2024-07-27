@@ -1,7 +1,7 @@
 use std::sync::atomic::{AtomicIsize, Ordering};
 
 use crate::{
-    search::{NonAtomicNodeStats, SearchTree},
+    search::{ComputedNodeStats, SearchTree},
     GameState, Move, ThreadData, MCTS,
 };
 
@@ -107,7 +107,7 @@ where
         self.tree().root().moves()
     }
 
-    pub fn stats(&self) -> Vec<NonAtomicNodeStats> {
+    pub fn stats(&self) -> Vec<ComputedNodeStats> {
         self.tree().root().stats()
     }
 }

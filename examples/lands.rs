@@ -1,6 +1,6 @@
 extern crate mcts;
 
-use std::{fmt::Display, io};
+use std::{fmt::Display, io, time::Instant};
 
 use enum_map::{Enum, EnumMap};
 use itertools::Itertools;
@@ -490,12 +490,12 @@ impl Evaluator<AI> for GameEval {
                 .values()
                 .map(|v| (*v > 0) as i64)
                 .sum::<i64>();
-        let card_advantage = (state.in_play[state.to_move as usize].values().sum::<u8>() as i64
+        let card_advantage = state.in_play[state.to_move as usize].values().sum::<u8>() as i64
             + state.hand(state.to_move).values().sum::<u8>() as i64
             - state.in_play[state.opponent() as usize]
                 .values()
                 .sum::<u8>() as i64
-            - state.hand(state.opponent()).values().sum::<u8>() as i64);
+            - state.hand(state.opponent()).values().sum::<u8>() as i64;
         devotion + domain + card_advantage + won
     }
 
@@ -540,7 +540,7 @@ impl MCTS for AI {
 
 fn main() {
     let mut input = String::new();
-    let mut mcts = MCTSManager::new(LandsGame::new(1335), AI, UCTPolicy(0.5), GameEval);
+    let mut mcts = MCTSManager::new(LandsGame::new(23), AI, UCTPolicy(0.7), GameEval);
     println!("{}", mcts.tree().root_state());
 
     loop {
@@ -578,10 +578,10 @@ fn main() {
                 println!("{}", mcts.tree().root_state());
             } else if let Ok(number) = input.strip_suffix('\n').unwrap().parse::<usize>() {
                 let mv = mcts.tree().root_state().legal_moves()[number];
-                mcts = mcts.make_move(mv);
+                mcts.advance(mv);
             } else if input == "s\n" {
                 println!("{}", mcts.tree().root_state());
-            } else if input == "stats\n" {
+            } else if input == "st\n" {
                 mcts.print_stats();
             } else if input == "pvs\n" {
                 mcts.pv_states(500)
@@ -594,9 +594,12 @@ fn main() {
                         println!("{}", s.1);
                     });
             } else if input == "p\n" {
-                mcts.playout_n_parallel(10_000_000, 8);
+                let before = Instant::now();
+                mcts.playout_n_parallel(5_000_000, 8);
+                let after = Instant::now();
+
                 // mcts.playout_n(1);
-                println!("playout");
+                println!("playout in {}", (after - before).as_secs_f32());
             } else if input == "p1\n" {
                 mcts.playout_n(1);
                 // mcts.playout_n(1);
