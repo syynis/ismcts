@@ -95,6 +95,10 @@ where
         self.search_tree.advance(&mv);
     }
 
+    pub fn clear_orphaned(&mut self) {
+        self.search_tree.clear_orphaned();
+    }
+
     pub fn best_move(&self) -> Option<Move<M>> {
         self.pv(1).first().cloned()
     }

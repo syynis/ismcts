@@ -229,6 +229,11 @@ impl LandsGame {
         self.knowledge[player.next() as usize].remove(card);
     }
 
+    fn put_out_play(&mut self, card: Card, player: Player) {
+        self.in_play[player as usize][card] -= 1;
+        self.discarded[player as usize][card] += 1;
+    }
+
     fn opponent(&self) -> Player {
         self.to_move.next()
     }
@@ -394,6 +399,7 @@ impl GameState for LandsGame {
         // println!("{:?} plays {:?}", self.current_player(), mv);
         match self.phase {
             Phase::Play => {
+                self.put_in_play(mv.card(), self.to_move);
                 self.phase = Phase::Respond(*mv, *mv);
                 self.to_move = self.to_move.next();
                 self.countered = false;
@@ -416,7 +422,7 @@ impl GameState for LandsGame {
                     } else {
                         // Card was countered
                         if self.countered {
-                            self.discard(first_move.card(), self.to_move);
+                            self.put_out_play(first_move.card(), self.to_move);
                         } else {
                             let mut first_move = first_move;
                             if let Move::Discard(Some(_)) = mv {
@@ -442,7 +448,6 @@ impl GameState for LandsGame {
                                 }
                                 _ => {}
                             }
-                            self.put_in_play(first_move.card(), self.to_move);
                         }
                         self.to_move = self.opponent();
                         self.draw();
@@ -468,7 +473,7 @@ impl Evaluator<AI> for GameEval {
         state: &<AI as MCTS>::State,
         _handle: Option<search::SearchHandle<AI>>,
     ) -> Self::StateEval {
-        let won = state.won(state.to_move) as i64 * 1_000;
+        let won = state.won(state.to_move) as i64 * 100;
         let devotion = *state.in_play[state.to_move as usize]
             .values()
             .max()
@@ -485,13 +490,12 @@ impl Evaluator<AI> for GameEval {
                 .values()
                 .map(|v| (*v > 0) as i64)
                 .sum::<i64>();
-        let card_advantage = 3
-            * (state.in_play[state.to_move as usize].values().sum::<u8>() as i64
-                + state.hand(state.to_move).values().sum::<u8>() as i64
-                - state.in_play[state.opponent() as usize]
-                    .values()
-                    .sum::<u8>() as i64
-                - state.hand(state.opponent()).values().sum::<u8>() as i64);
+        let card_advantage = (state.in_play[state.to_move as usize].values().sum::<u8>() as i64
+            + state.hand(state.to_move).values().sum::<u8>() as i64
+            - state.in_play[state.opponent() as usize]
+                .values()
+                .sum::<u8>() as i64
+            - state.hand(state.opponent()).values().sum::<u8>() as i64);
         devotion + domain + card_advantage + won
     }
 
@@ -513,7 +517,7 @@ impl Evaluator<AI> for GameEval {
         *existing
     }
 
-    fn make_relativ_player(&self, eval: &Self::StateEval, player: &mcts::Player<AI>) -> i64 {
+    fn make_relative(&self, eval: &Self::StateEval, player: &mcts::Player<AI>) -> i64 {
         match player {
             Player::One => *eval,
             Player::Two => -*eval,
@@ -536,7 +540,7 @@ impl MCTS for AI {
 
 fn main() {
     let mut input = String::new();
-    let mut mcts = MCTSManager::new(LandsGame::new(1335), AI, UCTPolicy(2.0), GameEval);
+    let mut mcts = MCTSManager::new(LandsGame::new(1335), AI, UCTPolicy(0.5), GameEval);
     println!("{}", mcts.tree().root_state());
 
     loop {
@@ -573,15 +577,12 @@ fn main() {
                 }
                 println!("{}", mcts.tree().root_state());
             } else if let Ok(number) = input.strip_suffix('\n').unwrap().parse::<usize>() {
-                let mv = mcts.moves()[number];
+                let mv = mcts.tree().root_state().legal_moves()[number];
                 mcts = mcts.make_move(mv);
             } else if input == "s\n" {
                 println!("{}", mcts.tree().root_state());
             } else if input == "stats\n" {
                 mcts.print_stats();
-                for (s, m) in mcts.stats().iter().zip(mcts.moves().iter()) {
-                    println!("move {:?} stats {:?}", s, m);
-                }
             } else if input == "pvs\n" {
                 mcts.pv_states(500)
                     .iter()
@@ -604,6 +605,9 @@ fn main() {
                 mcts.tree().root_state().print_knowledge();
             } else if input == "q\n" {
                 break;
+            } else if input == "clear\n" {
+                mcts.clear_orphaned();
+                println!("cleared");
             } else {
                 println!("m for moves, q for quit");
             }

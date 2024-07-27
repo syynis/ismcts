@@ -91,7 +91,7 @@ impl Evaluator<MyMCTS> for MyEvaluator {
         *existing
     }
 
-    fn make_relativ_player(&self, eval: &Self::StateEval, _player: &Player<MyMCTS>) -> i64 {
+    fn make_relative(&self, eval: &Self::StateEval, _player: &Player<MyMCTS>) -> i64 {
         *eval as i64
     }
 }

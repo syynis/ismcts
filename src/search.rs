@@ -100,27 +100,72 @@ impl<M: MCTS> SearchTree<M> {
         Self::new(new_state, self.manager, self.policy, self.eval)
     }
 
+    pub fn clear_orphaned(&mut self) {
+        self.orphaned.lock().unwrap().clear();
+    }
+
     pub fn advance(&mut self, mv: &Move<M>) {
         // advance state
         let mut new_state = self.root_state.clone();
         new_state.make_move(mv);
         self.root_state = new_state;
 
-        let child = {
-            let children = self.root.moves.read().unwrap();
+        let (child, child_idx) = {
+            let children = self.root.moves.write().unwrap();
             // Find the child corresponding to the move we played
+            let idx = children
+                .iter()
+                .enumerate()
+                .find(|(_, x)| x.mv == *mv)
+                .map(|(idx, _)| idx)
+                .unwrap();
             let child = &children.iter().find(|x| x.mv == *mv).unwrap().child;
             // Load raw pointer
             let child_ptr = child.load(Ordering::Relaxed);
-            unsafe { std::ptr::read(child_ptr) }
+            (unsafe { std::ptr::read(child_ptr) }, idx)
         };
 
         let old = std::mem::replace(&mut self.root, child);
         self.orphaned.lock().unwrap().push(Box::new(old));
-        if self.root.moves.is_poisoned() {
-            println!("poison");
+
+        // old.moves
+        //     .write()
+        //     .unwrap()
+        //     .remove(child_idx)
+        //     .child
+        //     .load(Ordering::Relaxed);
+        // for c in old.moves.write().unwrap().drain(..) {}
+        // Self::removal(old.moves);
+        // self.removal(&old.moves);
+        // println!("---- remove old-----");
+        // self.print_stats();
+        // println!("before child deletion");
+        // for (idx, c) in old.moves.write().unwrap().drain(..).enumerate() {
+        //     println!("deleting {}", idx);
+        //     let cc = c.child.load(Ordering::Relaxed);
+        //     println!("read {}", idx);
+        //     // unsafe { std::ptr::read(cc) };
+        //     println!("orphan {}", idx);
+        //     self.orphaned
+        //         .lock()
+        //         .unwrap()
+        //         .push(Box::new(unsafe { std::ptr::read(cc) }));
+        // }
+        // println!("after child deletion");
+    }
+
+    fn removal(&mut self, children: &RwLock<Vec<MoveInfo<M>>>) {
+        println!("{}", children.read().unwrap().len());
+        for c in children.write().unwrap().drain(..) {
+            println!("{:?}", c.mv);
+            let cc = c.child.load(Ordering::Relaxed);
+            if cc.is_null() {
+                continue;
+            }
+            let next = unsafe { std::ptr::read(cc) };
+            self.removal(&next.moves);
+            self.orphaned.lock().unwrap().push(Box::new(next));
         }
-        self.root.moves.clear_poison()
     }
 
     pub fn spec(&self) -> &M {
@@ -266,7 +311,7 @@ impl<M: MCTS> SearchTree<M> {
         for ((move_info, player), (parent, child)) in
             path.iter().zip(players.iter()).zip(nodes.iter()).rev()
         {
-            let eval_value = self.eval.make_relativ_player(eval, player);
+            let eval_value = self.eval.make_relative(eval, player);
             child.stats.up(&self.manager, eval_value);
             parent.moves.read().unwrap()[*move_info]
                 .stats
@@ -341,6 +386,10 @@ impl<M: MCTS> SearchTree<M> {
             self.expansion_contention_events.load(Ordering::Relaxed)
         );
         println!("{} orphaned", self.orphaned.lock().unwrap().len());
+
+        for (s, m) in self.root().stats().iter().zip(self.root().moves().iter()) {
+            println!("move {:?} stats {:?}", s, m);
+        }
     }
 }
 

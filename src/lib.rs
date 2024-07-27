@@ -69,7 +69,7 @@ pub trait Evaluator<M: MCTS>: Sync {
         existing: &Self::StateEval,
         handle: SearchHandle<M>,
     ) -> Self::StateEval;
-    fn make_relativ_player(&self, eval: &Self::StateEval, player: &Player<M>) -> i64;
+    fn make_relative(&self, eval: &Self::StateEval, player: &Player<M>) -> i64;
 }
 
 pub trait Policy<M: MCTS<Select = Self>>: Sync + Sized {
