@@ -7,6 +7,7 @@ use std::{
 };
 
 use itertools::Itertools;
+use rand::{seq::IteratorRandom, thread_rng};
 use smallvec::SmallVec;
 
 use crate::{Evaluator, GameState, Move, Player, Policy, StateEval, ThreadData, MCTS};
@@ -256,7 +257,9 @@ impl<M: MCTS> SearchTree<M> {
             )
         };
         let eval = new_eval.as_ref().unwrap_or(&node.eval);
-        self.backpropagation(&path_indices, &node_path, &players, eval);
+        let rollout_eval = self.rollout(&mut state, &self.eval, None);
+        // self.backpropagation(&path_indices, &node_path, &players, eval);
+        self.backpropagation(&path_indices, &node_path, &players, &rollout_eval);
         true
     }
 
@@ -298,6 +301,23 @@ impl<M: MCTS> SearchTree<M> {
         choice.owned.store(true, Ordering::Relaxed);
         self.num_nodes.fetch_add(1, Ordering::Relaxed);
         unsafe { (&*created, true) }
+    }
+
+    fn rollout(
+        &self,
+        state: &mut M::State,
+        eval: &M::Eval,
+        rollout_length: Option<usize>,
+    ) -> StateEval<M> {
+        let rollout_length = rollout_length.unwrap_or(usize::MAX);
+        for i in 0..rollout_length {
+            if let Some(mv) = state.legal_moves().into_iter().choose(&mut thread_rng()) {
+                state.make_move(&mv);
+            } else {
+                break;
+            }
+        }
+        eval.state_eval_new(state, None)
     }
 
     fn backpropagation(
