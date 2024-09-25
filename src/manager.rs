@@ -5,6 +5,10 @@ use crate::{
     GameState, Move, ThreadData, MCTS,
 };
 
+pub struct ObserverData<M: MCTS> {
+    search_tree: SearchTree<M>,
+}
+
 pub struct MCTSManager<M: MCTS> {
     search_tree: SearchTree<M>,
     tld: Option<ThreadData<M>>,
@@ -93,10 +97,6 @@ where
 
     pub fn advance(&mut self, mv: Move<M>) {
         self.search_tree.advance(&mv);
-    }
-
-    pub fn clear_orphaned(&mut self) {
-        self.search_tree.clear_orphaned();
     }
 
     pub fn best_move(&self) -> Option<Move<M>> {

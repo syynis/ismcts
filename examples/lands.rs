@@ -543,6 +543,21 @@ fn main() {
     let mut mcts = MCTSManager::new(LandsGame::new(23), AI, UCTPolicy(0.7), GameEval);
     println!("{}", mcts.tree().root_state());
 
+    mcts.playout_n_parallel(5_000, 8);
+    if let Some(best_move) = mcts.best_move() {
+        println!("Make move {:?}", best_move);
+        mcts.advance(best_move);
+        mcts.print_stats();
+    }
+    println!("Second run");
+    mcts.playout_n_parallel(5_000, 8);
+    if let Some(best_move) = mcts.best_move() {
+        println!("Make move {:?}", best_move);
+        mcts.advance(best_move);
+        mcts.print_stats();
+    }
+
+    return;
     loop {
         if io::stdin().read_line(&mut input).is_ok() {
             if input == "m\n" {
@@ -595,7 +610,8 @@ fn main() {
                     });
             } else if input == "p\n" {
                 let before = Instant::now();
-                mcts.playout_n_parallel(5_000_000, 8);
+                // mcts.playout_n_parallel(10, 8);
+                mcts.playout_n(5);
                 let after = Instant::now();
 
                 // mcts.playout_n(1);
@@ -608,9 +624,6 @@ fn main() {
                 mcts.tree().root_state().print_knowledge();
             } else if input == "q\n" {
                 break;
-            } else if input == "clear\n" {
-                mcts.clear_orphaned();
-                println!("cleared");
             } else {
                 println!("m for moves, q for quit");
             }

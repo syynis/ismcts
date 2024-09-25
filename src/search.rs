@@ -1,8 +1,8 @@
 use std::{
     ptr::null_mut,
     sync::{
-        atomic::{AtomicBool, AtomicI64, AtomicPtr, AtomicUsize, Ordering},
-        Mutex, RwLock,
+        atomic::{AtomicI64, AtomicPtr, AtomicUsize, Ordering},
+        RwLock,
     },
 };
 
@@ -20,7 +20,6 @@ pub struct SearchTree<M: MCTS> {
     manager: M,
 
     num_nodes: AtomicUsize,
-    orphaned: Mutex<Vec<Box<Node<M>>>>,
     expansion_contention_events: AtomicUsize,
 }
 
@@ -57,29 +56,14 @@ fn create_node<M: MCTS>(
     _policy: &M::Select,
     state: &M::State,
     handle: Option<SearchHandle<M>>,
-    _determined: bool,
 ) -> Node<M> {
-    // let moves = if determined {
-    //     state.legal_moves()
-    // } else {
-    //     state.all_moves()
-    // };
-    // let (move_eval, state_eval) = eval.eval_new(state, &moves, handle);
-    // policy.validate_evaluations(&move_eval);
-    // let moves = moves
-    //     .into_iter()
-    //     .zip(move_eval)
-    //     .map(|(m, e)| MoveInfo::new(m, e))
-    //     .collect();
-    // Node::new(moves, state_eval)
-
     let eval = eval.state_eval_new(state, handle);
     Node::empty(eval)
 }
 
 impl<M: MCTS> SearchTree<M> {
     pub fn new(state: M::State, manager: M, policy: M::Select, eval: M::Eval) -> Self {
-        let root = create_node(&eval, &policy, &state, None, true);
+        let root = create_node(&eval, &policy, &state, None);
         Self {
             root,
             root_state: state,
@@ -87,7 +71,6 @@ impl<M: MCTS> SearchTree<M> {
             eval,
             manager,
             num_nodes: 1.into(),
-            orphaned: Mutex::new(Vec::new()),
             expansion_contention_events: 0.into(),
         }
     }
@@ -100,18 +83,14 @@ impl<M: MCTS> SearchTree<M> {
         Self::new(new_state, self.manager, self.policy, self.eval)
     }
 
-    pub fn clear_orphaned(&mut self) {
-        self.orphaned.lock().unwrap().clear();
-    }
-
     pub fn advance(&mut self, mv: &Move<M>) {
         // advance state
         let mut new_state = self.root_state.clone();
         new_state.make_move(mv);
         self.root_state = new_state;
 
-        let (child, child_idx) = {
-            let children = self.root.moves.write().unwrap();
+        let child_idx = {
+            let children = self.root.moves.read().unwrap();
             // Find the child corresponding to the move we played
             let idx = children
                 .iter()
@@ -119,53 +98,16 @@ impl<M: MCTS> SearchTree<M> {
                 .find(|(_, x)| x.mv == *mv)
                 .map(|(idx, _)| idx)
                 .unwrap();
-            let child = &children.iter().find(|x| x.mv == *mv).unwrap().child;
-            // Load raw pointer
-            let child_ptr = child.load(Ordering::Relaxed);
-            (unsafe { std::ptr::read(child_ptr) }, idx)
+            idx
         };
-
-        let old = std::mem::replace(&mut self.root, child);
-        self.orphaned.lock().unwrap().push(Box::new(old));
-
-        // old.moves
-        //     .write()
-        //     .unwrap()
-        //     .remove(child_idx)
-        //     .child
-        //     .load(Ordering::Relaxed);
-        // for c in old.moves.write().unwrap().drain(..) {}
-        // Self::removal(old.moves);
-        // self.removal(&old.moves);
-        // println!("---- remove old-----");
-        // self.print_stats();
-        // println!("before child deletion");
-        // for (idx, c) in old.moves.write().unwrap().drain(..).enumerate() {
-        //     println!("deleting {}", idx);
-        //     let cc = c.child.load(Ordering::Relaxed);
-        //     println!("read {}", idx);
-        //     // unsafe { std::ptr::read(cc) };
-        //     println!("orphan {}", idx);
-        //     self.orphaned
-        //         .lock()
-        //         .unwrap()
-        //         .push(Box::new(unsafe { std::ptr::read(cc) }));
-        // }
-        // println!("after child deletion");
-    }
-
-    fn removal(&mut self, children: &RwLock<Vec<MoveInfo<M>>>) {
-        println!("{}", children.read().unwrap().len());
-        for c in children.write().unwrap().drain(..) {
-            println!("{:?}", c.mv);
-            let cc = c.child.load(Ordering::Relaxed);
-            if cc.is_null() {
-                continue;
-            }
-            let next = unsafe { std::ptr::read(cc) };
-            self.removal(&next.moves);
-            self.orphaned.lock().unwrap().push(Box::new(next));
-        }
+        let new_root = {
+            let mut moves = self.root.moves.write().unwrap();
+            moves.remove(child_idx)
+        };
+        let new_root_ptr = new_root.child.load(Ordering::SeqCst);
+        let old_root = std::mem::replace(&mut self.root, unsafe { *Box::from_raw(new_root_ptr) });
+        old_root.moves.write().unwrap().clear();
+        std::mem::forget(new_root);
     }
 
     pub fn spec(&self) -> &M {
@@ -194,30 +136,36 @@ impl<M: MCTS> SearchTree<M> {
             if path_indices.len() >= self.manager.max_playout_length() {
                 break;
             }
-
             let legal_moves = state.legal_moves();
-            // All moves that are legal now but have never been explored yet
-            let untried = legal_moves
-                .clone()
-                .into_iter()
-                .filter(|lmv| {
-                    let n = node.moves.read().unwrap();
-                    n.is_empty() || !n.iter().any(|c| c.mv == *lmv)
-                })
-                .collect_vec();
 
-            // Expand all untried nodes to children
-            for u in untried {
-                node.moves.write().unwrap().push(MoveInfo::new(u));
+            // All moves that are legal now but have never been explored yet
+            let untried = {
+                let node_moves = node.moves.read().unwrap();
+                legal_moves
+                    .clone()
+                    .into_iter()
+                    .filter(|lmv| node_moves.is_empty() || !node_moves.iter().any(|c| c.mv == *lmv))
+                    .collect_vec()
+            };
+
+            // If there are untried moves add one of them to the children
+            if !untried.is_empty() {
+                let mut children = node.moves.write().unwrap();
+                let child_mv = untried[0].clone();
+                if !children.iter().any(|c| c.mv == child_mv) {
+                    children.push(MoveInfo::new(child_mv));
+                }
             }
 
             let node_moves = node.moves.read().unwrap();
 
             // Get the children corresponding to all legal moves
-            let moves = legal_moves
-                .into_iter()
-                .filter_map(|mv| node_moves.iter().find(|child_mv| child_mv.mv == mv))
-                .collect_vec();
+            let moves = {
+                legal_moves
+                    .into_iter()
+                    .filter_map(|mv| node_moves.iter().find(|child_mv| child_mv.mv == mv))
+                    .collect_vec()
+            };
 
             if moves.is_empty() {
                 break;
@@ -280,7 +228,6 @@ impl<M: MCTS> SearchTree<M> {
             &self.policy,
             state,
             Some(self.make_handle(current_node, tld)),
-            self.root_state.current_player() == state.current_player(),
         );
         let created = Box::into_raw(Box::new(created));
         let other_child = choice.child.compare_exchange(
@@ -298,7 +245,6 @@ impl<M: MCTS> SearchTree<M> {
             }
         }
 
-        choice.owned.store(true, Ordering::Relaxed);
         self.num_nodes.fetch_add(1, Ordering::Relaxed);
         unsafe { (&*created, true) }
     }
@@ -404,7 +350,6 @@ impl<M: MCTS> SearchTree<M> {
             "{} e/c events",
             self.expansion_contention_events.load(Ordering::Relaxed)
         );
-        println!("{} orphaned", self.orphaned.lock().unwrap().len());
 
         for (s, m) in self.root().stats().iter().zip(self.root().moves().iter()) {
             println!("{:?} {:?}", s, m);
@@ -416,7 +361,6 @@ pub struct MoveInfo<M: MCTS> {
     mv: Move<M>,
     // move_select: MoveEval<M>,
     child: AtomicPtr<Node<M>>,
-    owned: AtomicBool,
     stats: NodeStats,
 }
 
@@ -438,7 +382,6 @@ impl<M: MCTS> MoveInfo<M> {
             mv,
             // move_select,
             child: AtomicPtr::default(),
-            owned: AtomicBool::new(false),
             stats: NodeStats::new(),
         }
     }
@@ -475,13 +418,12 @@ impl<M: MCTS> MoveInfo<M> {
 
 impl<M: MCTS> Drop for MoveInfo<M> {
     fn drop(&mut self) {
-        if !self.owned.load(Ordering::SeqCst) {
-            return;
-        }
         let ptr = self.child.load(Ordering::SeqCst);
         if !ptr.is_null() {
             unsafe {
-                drop(Box::from_raw(ptr));
+                let x = Box::from_raw(ptr);
+                x.moves.write().unwrap().clear();
+                drop(x);
             }
         }
     }
@@ -495,14 +437,6 @@ impl<M: MCTS> Node<M> {
             stats: NodeStats::new(),
         }
     }
-
-    // fn new(moves: Vec<MoveInfo<M>>, eval: StateEval<M>) -> Self {
-    //     Self {
-    //         moves: moves.into(),
-    //         eval,
-    //         stats: NodeStats::new(),
-    //     }
-    // }
 }
 
 impl NodeStats {
