@@ -1,4 +1,5 @@
 #![warn(clippy::pedantic)]
+#![allow(clippy::missing_panics_doc, clippy::cast_lossless)]
 #![feature(mapped_lock_guards)]
 
 use node::MoveInfo;

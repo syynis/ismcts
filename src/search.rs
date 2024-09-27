@@ -12,7 +12,7 @@ use crate::{
     Evaluator, GameState, Knowledge, Move, Player, Policy, StateEval, ThreadData, MCTS,
 };
 
-pub struct SearchTree<M: MCTS> {
+pub struct Tree<M: MCTS> {
     roots: [Node<M>; 4],
     root_state: M::State,
     knowledge: [Knowledge<M>; 4],
@@ -24,7 +24,8 @@ pub struct SearchTree<M: MCTS> {
     expansion_contention_events: AtomicUsize,
 }
 
-impl<M: MCTS> SearchTree<M> {
+impl<M: MCTS> Tree<M> {
+    #[must_use]
     pub fn new(state: M::State, manager: M, policy: M::Select, eval: M::Eval) -> Self {
         let knowledge = core::array::from_fn(|i| state.knowledge_from_state(Player::<M>::from(i)));
         Self {
@@ -71,6 +72,7 @@ impl<M: MCTS> SearchTree<M> {
         }
     }
 
+    #[must_use]
     pub fn playout(&self, tld: &mut ThreadData<M>) -> bool {
         let sentinel = IncreaseSentinel::new(&self.num_nodes);
         if sentinel.num_nodes >= self.manager.node_limit() {
@@ -142,7 +144,7 @@ impl<M: MCTS> SearchTree<M> {
                 debug_assert!(!moves.is_empty());
 
                 self.policy
-                    .choose(moves.iter().cloned(), self.make_handle(target_node, tld))
+                    .choose(moves.iter().copied(), self.make_handle(target_node, tld))
                     .1
             };
 
@@ -175,7 +177,7 @@ impl<M: MCTS> SearchTree<M> {
         }
 
         // Rollout
-        let rollout_eval = self.rollout(&mut state, &self.eval, None);
+        let rollout_eval = Self::rollout(&mut state, &self.eval, None);
         // Backprop
         for (idx, _) in nodes.iter().enumerate() {
             self.backpropagation(&path_indices[idx], &node_path[idx], &players, &rollout_eval);
@@ -201,8 +203,8 @@ impl<M: MCTS> SearchTree<M> {
         }
     }
 
+    #[must_use]
     fn rollout(
-        &self,
         state: &mut M::State,
         eval: &M::Eval,
         rollout_length: Option<usize>,
@@ -216,6 +218,7 @@ impl<M: MCTS> SearchTree<M> {
         eval.eval_new(state, None)
     }
 
+    #[must_use]
     fn descend<'a, 'b>(
         &'a self,
         state: &M::State,
@@ -240,7 +243,7 @@ impl<M: MCTS> SearchTree<M> {
             let choice = read.last().unwrap();
             (choice, read.len() - 1)
         };
-        let child = choice.child.load(Ordering::Relaxed) as *const Node<M>;
+        let child = choice.child.load(Ordering::Relaxed).cast_const();
         if !child.is_null() {
             return unsafe { (&*child, false, idx) };
         }
@@ -266,6 +269,7 @@ impl<M: MCTS> SearchTree<M> {
         unsafe { (&*created, true, idx) }
     }
 
+    #[must_use]
     fn make_handle<'a>(
         &'a self,
         node: &'a Node<M>,
@@ -278,6 +282,7 @@ impl<M: MCTS> SearchTree<M> {
         }
     }
 
+    #[must_use]
     pub fn pv(&self, num_moves: usize) -> Vec<Move<M>> {
         let mut res = Vec::new();
         let mut curr_player: usize = self.root_state.current_player().into();
@@ -311,7 +316,7 @@ impl<M: MCTS> SearchTree<M> {
                     let next = ptr.map(|ptr| (!ptr.is_null()).then_some(unsafe { &*ptr }));
                     next.flatten()
                 });
-                if new_nodes.iter().all(|node| node.is_some()) {
+                if new_nodes.iter().all(std::option::Option::is_some) {
                     let new: [&Node<M>; 4] = core::array::from_fn(|idx| new_nodes[idx].unwrap());
                     curr = new;
                 } else {
@@ -328,9 +333,9 @@ impl<M: MCTS> SearchTree<M> {
         let player_idx = self.root_state.current_player().into();
         let inner = self.roots[player_idx].moves.read().unwrap();
         let mut moves: Vec<&MoveInfo<M>> = inner.iter().collect();
-        moves.sort_by_key(|x| -(x.visits() as i64));
+        moves.sort_by_key(|x| x.visits());
         for mv in moves {
-            println!("{:?}", mv.mv);
+            println!("{:?} {}", mv.mv, mv.visits());
         }
     }
 
@@ -343,9 +348,9 @@ impl<M: MCTS> SearchTree<M> {
             .iter()
             .filter(|x| legal.clone().into_iter().any(|l| x.mv == l))
             .collect();
-        moves.sort_by_key(|x| -(x.visits() as i64));
-        for mv in moves {
-            println!("{:?}", mv.mv);
+        moves.sort_by_key(|x| x.visits());
+        for mv in moves.iter().rev() {
+            println!("{:?} {}", mv.mv, mv.visits());
         }
     }
 
@@ -357,20 +362,26 @@ impl<M: MCTS> SearchTree<M> {
         );
 
         for (s, m) in self.root().stats().iter().zip(self.root().moves().iter()) {
-            println!("{:?} {:?}", s, m);
+            println!("{s:?} {m:?}");
         }
     }
+
+    #[must_use]
     pub fn spec(&self) -> &M {
         &self.manager
     }
 
+    #[must_use]
     pub fn num_nodes(&self) -> usize {
         self.num_nodes.load(Ordering::SeqCst)
     }
+
+    #[must_use]
     pub fn root_state(&self) -> &M::State {
         &self.root_state
     }
 
+    #[must_use]
     pub fn root(&self) -> NodeHandle<M> {
         NodeHandle {
             node: &self.roots[self.root_state.current_player().into()],
@@ -378,6 +389,7 @@ impl<M: MCTS> SearchTree<M> {
     }
 }
 
+#[allow(clippy::module_name_repetitions)]
 pub struct SearchHandle<'a, M: 'a + MCTS> {
     node: &'a Node<M>,
     tld: &'a mut ThreadData<M>,
@@ -385,14 +397,17 @@ pub struct SearchHandle<'a, M: 'a + MCTS> {
 }
 
 impl<'a, M: MCTS> SearchHandle<'a, M> {
+    #[must_use]
     pub fn node(&self) -> NodeHandle<'a, M> {
         NodeHandle { node: self.node }
     }
 
+    #[must_use]
     pub fn thread_data(&mut self) -> &mut ThreadData<M> {
         self.tld
     }
 
+    #[must_use]
     pub fn mcts(&self) -> &'a M {
         self.manager
     }

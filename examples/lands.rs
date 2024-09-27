@@ -4,7 +4,7 @@ use std::{fmt::Display, io, time::Instant};
 
 use enum_map::{Enum, EnumMap};
 use itertools::Itertools;
-use mcts::{manager::MCTSManager, policies::UCTPolicy, *};
+use mcts::{manager::Manager, policies::UCTPolicy, *};
 use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
 
 const CARDS: [Card; 5] = [Card::White, Card::Black, Card::Green, Card::Red, Card::Blue];
@@ -471,7 +471,7 @@ impl Evaluator<AI> for GameEval {
     fn eval_new(
         &self,
         state: &<AI as MCTS>::State,
-        _handle: Option<search::SearchHandle<AI>>,
+        _handle: Option<search::Handle<AI>>,
     ) -> Self::StateEval {
         let won = state.won(state.to_move) as i64 * 100;
         let devotion = *state.in_play[state.to_move as usize]
@@ -503,7 +503,7 @@ impl Evaluator<AI> for GameEval {
         &self,
         state: &LandsGame,
         moves: &Vec<Move>,
-        handle: Option<search::SearchHandle<AI>>,
+        handle: Option<search::Handle<AI>>,
     ) -> (Vec<MoveEval<AI>>, Self::StateEval) {
         (vec![(); moves.len()], self.eval_new(&state, handle))
     }
@@ -512,7 +512,7 @@ impl Evaluator<AI> for GameEval {
         &self,
         _state: &LandsGame,
         existing: &Self::StateEval,
-        _handle: search::SearchHandle<AI>,
+        _handle: search::Handle<AI>,
     ) -> Self::StateEval {
         *existing
     }
@@ -540,7 +540,7 @@ impl MCTS for AI {
 
 fn main() {
     let mut input = String::new();
-    let mut mcts = MCTSManager::new(LandsGame::new(23), AI, UCTPolicy(0.7), GameEval);
+    let mut mcts = Manager::new(LandsGame::new(23), AI, UCTPolicy(0.7), GameEval);
     println!("{}", mcts.tree().root_state());
 
     mcts.playout_n_parallel(5_000, 8);

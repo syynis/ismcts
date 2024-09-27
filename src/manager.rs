@@ -1,18 +1,19 @@
 use std::sync::atomic::{AtomicIsize, Ordering};
 
-use crate::{node::ComputedNodeStats, search::SearchTree, GameState, Move, ThreadData, MCTS};
+use crate::{node::ComputedStats, search::Tree, GameState, Move, ThreadData, MCTS};
 
-pub struct MCTSManager<M: MCTS> {
-    search_tree: SearchTree<M>,
+pub struct Manager<M: MCTS> {
+    search_tree: Tree<M>,
     tld: Option<ThreadData<M>>,
 }
 
-impl<M: MCTS> MCTSManager<M>
+#[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+impl<M: MCTS> Manager<M>
 where
     ThreadData<M>: Default,
 {
     pub fn new(state: M::State, manager: M, policy: M::Select, eval: M::Eval) -> Self {
-        let search_tree = SearchTree::new(state, manager, policy, eval);
+        let search_tree = Tree::new(state, manager, policy, eval);
         Self {
             search_tree,
             tld: None,
@@ -25,9 +26,9 @@ where
 
     pub fn playout(&mut self) {
         if self.tld.is_none() {
-            self.tld = Some(Default::default())
+            self.tld = Some(ThreadData::default());
         }
-        self.search_tree.playout(self.tld.as_mut().unwrap());
+        let _ = self.search_tree.playout(self.tld.as_mut().unwrap());
     }
 
     pub fn playout_n(&mut self, n: u64) {
@@ -44,20 +45,20 @@ where
         let _ = crossbeam::scope(|scope| {
             (0..num_threads).for_each(|_| {
                 scope.spawn(|_| {
-                    let mut tld = Default::default();
+                    let mut tld = ThreadData::default();
                     loop {
                         let count = counter.fetch_sub(1, Ordering::SeqCst);
                         if count <= 0 {
                             break;
                         }
-                        search_tree.playout(&mut tld);
+                        let _ = search_tree.playout(&mut tld);
                     }
                 });
             });
         });
     }
 
-    pub fn tree(&self) -> &SearchTree<M> {
+    pub fn tree(&self) -> &Tree<M> {
         &self.search_tree
     }
 
@@ -78,8 +79,8 @@ where
         states
     }
 
-    pub fn advance(&mut self, mv: Move<M>) {
-        self.search_tree.advance(&mv);
+    pub fn advance(&mut self, mv: &Move<M>) {
+        self.search_tree.advance(mv);
     }
 
     pub fn best_move(&self) -> Option<Move<M>> {
@@ -94,7 +95,7 @@ where
         self.tree().display_moves();
     }
 
-    pub fn stats(&self) -> Vec<ComputedNodeStats> {
+    pub fn stats(&self) -> Vec<ComputedStats> {
         self.tree().root().stats()
     }
 }

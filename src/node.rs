@@ -10,7 +10,7 @@ use crate::{search::SearchHandle, Evaluator, Move, StateEval, MCTS};
 pub struct MoveInfo<M: MCTS> {
     pub mv: Move<M>,
     pub child: AtomicPtr<Node<M>>,
-    pub stats: NodeStats,
+    pub stats: Stats,
 }
 
 impl<M: MCTS> Drop for MoveInfo<M> {
@@ -27,30 +27,36 @@ impl<M: MCTS> Drop for MoveInfo<M> {
 }
 
 impl<M: MCTS> MoveInfo<M> {
+    #[must_use]
     pub fn new(mv: Move<M>) -> Self {
         Self {
             mv,
             child: AtomicPtr::default(),
-            stats: NodeStats::new(),
+            stats: Stats::new(),
         }
     }
 
+    #[must_use]
     pub fn get_move(&self) -> &Move<M> {
         &self.mv
     }
 
+    #[must_use]
     pub fn visits(&self) -> u64 {
         self.stats.visits.load(Ordering::Relaxed) as u64
     }
 
+    #[must_use]
     pub fn availability(&self) -> u64 {
         self.stats.availability_count.load(Ordering::Relaxed) as u64
     }
 
+    #[must_use]
     pub fn sum_rewards(&self) -> i64 {
         self.stats.sum_evaluations.load(Ordering::Relaxed)
     }
 
+    #[must_use]
     pub fn child(&self) -> Option<NodeHandle<M>> {
         let ptr = self.child.load(Ordering::Relaxed);
         if ptr.is_null() {
@@ -64,32 +70,34 @@ impl<M: MCTS> MoveInfo<M> {
 pub struct Node<M: MCTS> {
     pub moves: RwLock<Vec<MoveInfo<M>>>,
     pub eval: StateEval<M>,
-    pub stats: NodeStats,
+    pub stats: Stats,
 }
 
 impl<M: MCTS> Node<M> {
+    #[must_use]
     pub fn new(eval: &M::Eval, state: &M::State, handle: Option<SearchHandle<M>>) -> Node<M> {
         Self {
             moves: Vec::new().into(),
             eval: eval.eval_new(state, handle),
-            stats: NodeStats::new(),
+            stats: Stats::new(),
         }
     }
 }
 
-pub struct NodeStats {
+pub struct Stats {
     visits: AtomicUsize,
     availability_count: AtomicUsize,
     sum_evaluations: AtomicI64,
 }
 
-impl Default for NodeStats {
+impl Default for Stats {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl NodeStats {
+impl Stats {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             sum_evaluations: 0.into(),
@@ -113,7 +121,7 @@ impl NodeStats {
         self.sum_evaluations.fetch_add(delta, Ordering::Relaxed);
     }
 
-    pub fn replace(&self, other: &NodeStats) {
+    pub fn replace(&self, other: &Stats) {
         self.visits
             .store(other.visits.load(Ordering::Relaxed), Ordering::Relaxed);
         self.sum_evaluations.store(
@@ -123,12 +131,15 @@ impl NodeStats {
     }
 }
 
+#[allow(clippy::module_name_repetitions)]
 #[derive(Clone, Copy)]
 pub struct NodeHandle<'a, M: 'a + MCTS> {
     pub node: &'a Node<M>,
 }
 
+#[allow(clippy::cast_precision_loss)]
 impl<'a, M: MCTS> NodeHandle<'a, M> {
+    #[must_use]
     pub fn moves(&self) -> Vec<Move<M>> {
         self.node
             .moves
@@ -139,13 +150,14 @@ impl<'a, M: MCTS> NodeHandle<'a, M> {
             .collect_vec()
     }
 
-    pub fn stats(&self) -> Vec<ComputedNodeStats> {
+    #[must_use]
+    pub fn stats(&self) -> Vec<ComputedStats> {
         self.node
             .moves
             .read()
             .unwrap()
             .iter()
-            .map(|x| ComputedNodeStats {
+            .map(|x| ComputedStats {
                 visits: x.visits(),
                 availability_count: x.availability(),
                 sum_evaluations: x.sum_rewards(),
@@ -157,7 +169,7 @@ impl<'a, M: MCTS> NodeHandle<'a, M> {
 }
 
 #[derive(Debug)]
-pub struct ComputedNodeStats {
+pub struct ComputedStats {
     pub visits: u64,
     pub availability_count: u64,
     pub sum_evaluations: i64,

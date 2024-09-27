@@ -29,6 +29,7 @@ impl<M: MCTS<Select = Self>> Policy<M> for UCBPolicy {
 #[derive(Debug, Clone)]
 pub struct UCTPolicy(pub f64);
 
+#[allow(clippy::cast_precision_loss)]
 impl<M: MCTS<Select = Self>> Policy<M> for UCTPolicy {
     type ThreadLocalData = PolicyRng;
     type MoveSelect = ();
@@ -70,6 +71,7 @@ pub struct PolicyRng {
 }
 
 impl PolicyRng {
+    #[must_use]
     pub fn new() -> Self {
         let rng = SeedableRng::seed_from_u64(1337);
         Self { rng }
@@ -101,7 +103,7 @@ impl PolicyRng {
                 choice = Some((idx, elt));
                 num_optimal = 1;
                 best_so_far = score;
-            } else if score == best_so_far {
+            } else if (score - best_so_far).abs() < 0.001 {
                 num_optimal += 1;
                 if self.rng.gen_bool(1.0 / num_optimal as f64) {
                     choice = Some((idx, elt));
