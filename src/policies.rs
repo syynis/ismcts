@@ -1,4 +1,4 @@
-use rand::{Rng, SeedableRng};
+use rand::{seq::IteratorRandom, Rng, SeedableRng};
 use rand_xorshift::XorShiftRng;
 
 use crate::{node, search, Policy, MCTS};
@@ -81,8 +81,7 @@ impl PolicyRng {
     where
         Iter: Iterator<Item = T> + Clone,
     {
-        let len = elts.clone().count();
-        elts.enumerate().nth(self.rng.gen_range(0..len))
+        elts.enumerate().choose(&mut self.rng)
     }
 
     pub fn select_by_key<T, Iter, KeyFn>(
