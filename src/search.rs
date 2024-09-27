@@ -25,17 +25,12 @@ pub struct SearchTree<M: MCTS> {
 }
 
 impl<M: MCTS> SearchTree<M> {
-    pub fn new(
-        state: M::State,
-        knowledge: Knowledge<M>,
-        manager: M,
-        policy: M::Select,
-        eval: M::Eval,
-    ) -> Self {
+    pub fn new(state: M::State, manager: M, policy: M::Select, eval: M::Eval) -> Self {
+        let knowledge = core::array::from_fn(|i| state.knowledge_from_state(Player::<M>::from(i)));
         Self {
             roots: core::array::from_fn(|_| Node::new(&eval, &state, None)),
             root_state: state,
-            knowledge: core::array::from_fn(|_| knowledge.clone()),
+            knowledge,
             policy,
             eval,
             manager,
@@ -218,7 +213,7 @@ impl<M: MCTS> SearchTree<M> {
                 state.make_move(&mv);
             }
         });
-        eval.state_eval_new(state, None)
+        eval.eval_new(state, None)
     }
 
     fn descend<'a, 'b>(

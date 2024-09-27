@@ -468,7 +468,7 @@ struct GameEval;
 impl Evaluator<AI> for GameEval {
     type StateEval = i64;
 
-    fn state_eval_new(
+    fn eval_new(
         &self,
         state: &<AI as MCTS>::State,
         _handle: Option<search::SearchHandle<AI>>,
@@ -505,7 +505,7 @@ impl Evaluator<AI> for GameEval {
         moves: &Vec<Move>,
         handle: Option<search::SearchHandle<AI>>,
     ) -> (Vec<MoveEval<AI>>, Self::StateEval) {
-        (vec![(); moves.len()], self.state_eval_new(&state, handle))
+        (vec![(); moves.len()], self.eval_new(&state, handle))
     }
 
     fn eval_existing(

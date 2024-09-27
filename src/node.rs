@@ -71,7 +71,7 @@ impl<M: MCTS> Node<M> {
     pub fn new(eval: &M::Eval, state: &M::State, handle: Option<SearchHandle<M>>) -> Node<M> {
         Self {
             moves: Vec::new().into(),
-            eval: eval.state_eval_new(state, handle),
+            eval: eval.eval_new(state, handle),
             stats: NodeStats::new(),
         }
     }

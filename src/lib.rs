@@ -1,3 +1,4 @@
+#![warn(clippy::pedantic)]
 #![feature(mapped_lock_guards)]
 
 use node::MoveInfo;
@@ -46,7 +47,7 @@ pub type TreePolicyThreadData<M> = <<M as MCTS>::Select as Policy<M>>::ThreadLoc
 
 pub trait GameState: Clone {
     type Move: Sync + Send + Clone + PartialEq + std::fmt::Debug;
-    type Player: Sync + std::fmt::Debug + PartialEq + Into<usize>;
+    type Player: Sync + std::fmt::Debug + PartialEq + From<usize> + Into<usize>;
     type MoveList: std::iter::IntoIterator<Item = Self::Move> + Clone;
     type Knowledge: Sync + Clone;
 
@@ -55,18 +56,13 @@ pub trait GameState: Clone {
     fn make_move(&mut self, mv: &Self::Move);
     fn randomize_determination(&mut self, observer: Self::Player, knowledge: &Self::Knowledge);
     fn update_knowledge(&self, mv: &Self::Move, knowledge: &mut Self::Knowledge);
+    fn knowledge_from_state(&self, observer: Self::Player) -> Self::Knowledge;
 }
 
 pub trait Evaluator<M: MCTS>: Sync {
     type StateEval: Sync + Send;
 
-    fn state_eval_new(&self, state: &M::State, handle: Option<SearchHandle<M>>) -> Self::StateEval;
-    fn eval_new(
-        &self,
-        state: &M::State,
-        moves: &MoveList<M>,
-        handle: Option<SearchHandle<M>>,
-    ) -> Self::StateEval;
+    fn eval_new(&self, state: &M::State, handle: Option<SearchHandle<M>>) -> Self::StateEval;
     fn eval_existing(
         &self,
         state: &M::State,
