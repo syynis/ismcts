@@ -1,13 +1,6 @@
 use std::sync::atomic::{AtomicIsize, Ordering};
 
-use crate::{
-    search::{ComputedNodeStats, SearchTree},
-    GameState, Move, ThreadData, MCTS,
-};
-
-pub struct ObserverData<M: MCTS> {
-    search_tree: SearchTree<M>,
-}
+use crate::{node::ComputedNodeStats, search::SearchTree, GameState, Move, ThreadData, MCTS};
 
 pub struct MCTSManager<M: MCTS> {
     search_tree: SearchTree<M>,
@@ -86,15 +79,6 @@ where
         states
     }
 
-    pub fn make_move(self, mv: Move<M>) -> Self {
-        let mut new_state = self.search_tree.root_state().clone();
-        new_state.make_move(&mv);
-        Self {
-            search_tree: self.search_tree.new_root(new_state),
-            tld: None,
-        }
-    }
-
     pub fn advance(&mut self, mv: Move<M>) {
         self.search_tree.advance(&mv);
     }
@@ -105,6 +89,10 @@ where
 
     pub fn moves(&self) -> Vec<Move<M>> {
         self.tree().root().moves()
+    }
+
+    pub fn print_root_moves(&self) {
+        self.tree().display_moves();
     }
 
     pub fn stats(&self) -> Vec<ComputedNodeStats> {

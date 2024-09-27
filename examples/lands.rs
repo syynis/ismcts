@@ -547,6 +547,7 @@ fn main() {
     if let Some(best_move) = mcts.best_move() {
         println!("Make move {:?}", best_move);
         mcts.advance(best_move);
+        mcts.print_root_moves();
         mcts.print_stats();
     }
     println!("Second run");
@@ -554,6 +555,7 @@ fn main() {
     if let Some(best_move) = mcts.best_move() {
         println!("Make move {:?}", best_move);
         mcts.advance(best_move);
+        mcts.print_root_moves();
         mcts.print_stats();
     }
 

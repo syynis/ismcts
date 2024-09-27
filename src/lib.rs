@@ -1,8 +1,10 @@
 #![feature(mapped_lock_guards)]
 
-use search::{MoveInfo, SearchHandle};
+use node::MoveInfo;
+use search::SearchHandle;
 
 pub mod manager;
+pub mod node;
 pub mod policies;
 pub mod search;
 
@@ -37,14 +39,13 @@ pub trait MCTS: Sized + Sync {
 
 pub type Move<M> = <<M as MCTS>::State as GameState>::Move;
 pub type MoveList<M> = <<M as MCTS>::State as GameState>::MoveList;
-pub type MoveEval<M> = <<M as MCTS>::Select as Policy<M>>::MoveSelect;
 pub type StateEval<M> = <<M as MCTS>::Eval as Evaluator<M>>::StateEval;
 pub type Player<M> = <<M as MCTS>::State as GameState>::Player;
 pub type TreePolicyThreadData<M> = <<M as MCTS>::Select as Policy<M>>::ThreadLocalData;
 
 pub trait GameState: Clone {
     type Move: Sync + Send + Clone + PartialEq + std::fmt::Debug;
-    type Player: Sync + std::fmt::Debug + PartialEq;
+    type Player: Sync + std::fmt::Debug + PartialEq + Into<usize>;
     type MoveList: std::iter::IntoIterator<Item = Self::Move> + Clone;
 
     fn current_player(&self) -> Self::Player;
@@ -62,7 +63,7 @@ pub trait Evaluator<M: MCTS>: Sync {
         state: &M::State,
         moves: &MoveList<M>,
         handle: Option<SearchHandle<M>>,
-    ) -> (Vec<MoveEval<M>>, Self::StateEval);
+    ) -> Self::StateEval;
     fn eval_existing(
         &self,
         state: &M::State,
@@ -76,7 +77,6 @@ pub trait Policy<M: MCTS<Select = Self>>: Sync + Sized {
     type MoveSelect: Sync + Send;
     type ThreadLocalData: Default;
 
-    // fn choose<'a, MoveIter>(&self, moves: MoveIter, handle: SearchHandle<M>) -> &'a MoveInfo<M>
     fn choose<'a, MoveIter>(
         &self,
         moves: MoveIter,
@@ -84,7 +84,6 @@ pub trait Policy<M: MCTS<Select = Self>>: Sync + Sized {
     ) -> (usize, &'a MoveInfo<M>)
     where
         MoveIter: Iterator<Item = &'a MoveInfo<M>> + Clone;
-    fn validate_evaluations(&self, _evals: &[Self::MoveSelect]) {}
 }
 
 pub struct ThreadData<M: MCTS> {

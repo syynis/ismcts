@@ -11,4 +11,5 @@ rand_xorshift = {workspace = true}
 itertools = {workspace = true}
 enum-map = {workspace = true}
 crossbeam = {workspace = true}
+
 [features]

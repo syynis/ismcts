@@ -1,10 +1,7 @@
 use rand::{Rng, SeedableRng};
 use rand_xorshift::XorShiftRng;
 
-use crate::{
-    search::{self},
-    Policy, MCTS,
-};
+use crate::{node, search, Policy, MCTS};
 
 #[derive(Debug, Clone)]
 pub struct UCBPolicy;
@@ -17,9 +14,9 @@ impl<M: MCTS<Select = Self>> Policy<M> for UCBPolicy {
         &self,
         moves: MoveIter,
         mut handle: search::SearchHandle<M>,
-    ) -> (usize, &'a search::MoveInfo<M>)
+    ) -> (usize, &'a node::MoveInfo<M>)
     where
-        MoveIter: Iterator<Item = &'a search::MoveInfo<M>> + Clone,
+        MoveIter: Iterator<Item = &'a node::MoveInfo<M>> + Clone,
     {
         handle
             .thread_data()
@@ -40,9 +37,9 @@ impl<M: MCTS<Select = Self>> Policy<M> for UCTPolicy {
         &self,
         moves: MoveIter,
         mut handle: search::SearchHandle<M>,
-    ) -> (usize, &'a search::MoveInfo<M>)
+    ) -> (usize, &'a node::MoveInfo<M>)
     where
-        MoveIter: Iterator<Item = &'a search::MoveInfo<M>> + Clone,
+        MoveIter: Iterator<Item = &'a node::MoveInfo<M>> + Clone,
     {
         // let total_visits = moves.clone().map(|x| x.visits()).sum::<u64>();
         // let adjusted_total = (total_visits + 1) as f64;
@@ -66,89 +63,6 @@ impl<M: MCTS<Select = Self>> Policy<M> for UCTPolicy {
             .unwrap()
     }
 }
-
-const RECIPROCAL_TABLE_LEN: usize = 128;
-
-#[derive(Clone, Debug)]
-pub struct AlphaGoPolicy {
-    exploration_constant: f64,
-    reciprocals: Vec<f64>,
-}
-
-impl AlphaGoPolicy {
-    pub fn new(exploration_constant: f64) -> Self {
-        assert!(
-            exploration_constant > 0.0,
-            "exploration constant is {} (must be positive)",
-            exploration_constant
-        );
-        let reciprocals = (0..RECIPROCAL_TABLE_LEN)
-            .map(|x| if x == 0 { 2.0 } else { 1.0 / x as f64 })
-            .collect();
-        Self {
-            exploration_constant,
-            reciprocals,
-        }
-    }
-
-    pub fn exploration_constant(&self) -> f64 {
-        self.exploration_constant
-    }
-
-    fn reciprocal(&self, x: usize) -> f64 {
-        if x < RECIPROCAL_TABLE_LEN {
-            unsafe { *self.reciprocals.get_unchecked(x) }
-        } else {
-            1.0 / x as f64
-        }
-    }
-}
-
-// impl<M: MCTS<Select = Self>> Policy<M> for AlphaGoPolicy {
-//     type MoveSelect = f64;
-//     type ThreadLocalData = PolicyRng;
-
-//     fn choose<'a, MoveIter>(
-//         &self,
-//         moves: MoveIter,
-//         mut handle: SearchHandle<M>,
-//     ) -> &'a search::MoveInfo<M>
-//     where
-//         MoveIter: Iterator<Item = &'a Arc<search::MoveInfo<M>>> + Clone,
-//     {
-//         let total_visits = moves.clone().map(|x| x.visits()).sum::<u64>() + 1;
-//         let sqrt_total_visits = (total_visits as f64).sqrt();
-//         let explore_coef = self.exploration_constant * sqrt_total_visits;
-//         handle
-//             .thread_data()
-//             .policy_data
-//             .select_by_key(moves, |mov| {
-//                 let sum_rewards = mov.sum_rewards() as f64;
-//                 let child_visits = mov.visits();
-//                 let policy_evaln = *mov.move_select();
-//                 (sum_rewards + explore_coef * policy_evaln) * self.reciprocal(child_visits as usize)
-//             })
-//             .unwrap()
-//     }
-
-//     fn validate_evaluations(&self, evalns: &[f64]) {
-//         for &x in evalns {
-//             assert!(
-//                 x >= -1e-6,
-//                 "Move evaluation is {} (must be non-negative)",
-//                 x
-//             );
-//         }
-//         if !evalns.is_empty() {
-//             let evaln_sum: f64 = evalns.iter().sum();
-//             assert!(
-//                 (evaln_sum - 1.0).abs() < 0.1,
-//                 "Sum of evaluations is {} (should sum to 1)",
-//                 evaln_sum
-//             );
-//         }
-//     }
-// }
 
 #[derive(Clone)]
 pub struct PolicyRng {
