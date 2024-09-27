@@ -41,17 +41,20 @@ pub type Move<M> = <<M as MCTS>::State as GameState>::Move;
 pub type MoveList<M> = <<M as MCTS>::State as GameState>::MoveList;
 pub type StateEval<M> = <<M as MCTS>::Eval as Evaluator<M>>::StateEval;
 pub type Player<M> = <<M as MCTS>::State as GameState>::Player;
+pub type Knowledge<M> = <<M as MCTS>::State as GameState>::Knowledge;
 pub type TreePolicyThreadData<M> = <<M as MCTS>::Select as Policy<M>>::ThreadLocalData;
 
 pub trait GameState: Clone {
     type Move: Sync + Send + Clone + PartialEq + std::fmt::Debug;
     type Player: Sync + std::fmt::Debug + PartialEq + Into<usize>;
     type MoveList: std::iter::IntoIterator<Item = Self::Move> + Clone;
+    type Knowledge: Sync + Clone;
 
     fn current_player(&self) -> Self::Player;
     fn legal_moves(&self) -> Self::MoveList;
     fn make_move(&mut self, mv: &Self::Move);
-    fn randomize_determination(&mut self, observer: Self::Player);
+    fn randomize_determination(&mut self, observer: Self::Player, knowledge: &Self::Knowledge);
+    fn update_knowledge(&self, mv: &Self::Move, knowledge: &mut Self::Knowledge);
 }
 
 pub trait Evaluator<M: MCTS>: Sync {

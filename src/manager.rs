@@ -1,6 +1,8 @@
 use std::sync::atomic::{AtomicIsize, Ordering};
 
-use crate::{node::ComputedNodeStats, search::SearchTree, GameState, Move, ThreadData, MCTS};
+use crate::{
+    node::ComputedNodeStats, search::SearchTree, GameState, Knowledge, Move, ThreadData, MCTS,
+};
 
 pub struct MCTSManager<M: MCTS> {
     search_tree: SearchTree<M>,
@@ -11,8 +13,14 @@ impl<M: MCTS> MCTSManager<M>
 where
     ThreadData<M>: Default,
 {
-    pub fn new(state: M::State, manager: M, policy: M::Select, eval: M::Eval) -> Self {
-        let search_tree = SearchTree::new(state, manager, policy, eval);
+    pub fn new(
+        state: M::State,
+        knowledge: Knowledge<M>,
+        manager: M,
+        policy: M::Select,
+        eval: M::Eval,
+    ) -> Self {
+        let search_tree = SearchTree::new(state, knowledge, manager, policy, eval);
 
         Self {
             search_tree,

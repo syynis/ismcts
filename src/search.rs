@@ -9,13 +9,13 @@ use smallvec::SmallVec;
 
 use crate::{
     node::{MoveInfo, Node, NodeHandle},
-    Evaluator, GameState, Move, Player, Policy, StateEval, ThreadData, MCTS,
+    Evaluator, GameState, Knowledge, Move, Player, Policy, StateEval, ThreadData, MCTS,
 };
 
 pub struct SearchTree<M: MCTS> {
     roots: [Node<M>; 4],
     root_state: M::State,
-    // knowledge: [M::Knowledge; 4],
+    knowledge: [Knowledge<M>; 4],
     policy: M::Select,
     eval: M::Eval,
     manager: M,
@@ -25,10 +25,17 @@ pub struct SearchTree<M: MCTS> {
 }
 
 impl<M: MCTS> SearchTree<M> {
-    pub fn new(state: M::State, manager: M, policy: M::Select, eval: M::Eval) -> Self {
+    pub fn new(
+        state: M::State,
+        knowledge: Knowledge<M>,
+        manager: M,
+        policy: M::Select,
+        eval: M::Eval,
+    ) -> Self {
         Self {
             roots: core::array::from_fn(|_| Node::new(&eval, &state, None)),
             root_state: state,
+            knowledge: core::array::from_fn(|_| knowledge.clone()),
             policy,
             eval,
             manager,
@@ -42,6 +49,9 @@ impl<M: MCTS> SearchTree<M> {
         let mut new_state = self.root_state.clone();
         new_state.make_move(mv);
         self.root_state = new_state;
+        for k in &mut self.knowledge {
+            self.root_state.update_knowledge(mv, k);
+        }
 
         for root in &mut self.roots {
             let child_idx = {
@@ -73,12 +83,16 @@ impl<M: MCTS> SearchTree<M> {
         }
 
         let mut state = self.root_state.clone();
-        state.randomize_determination(state.current_player());
+        state.randomize_determination(
+            state.current_player(),
+            &self.knowledge[state.current_player().into()],
+        );
 
         let mut path_indices: [SmallVec<usize, 64>; 4] = [const { SmallVec::new() }; 4];
         let mut node_path: [SmallVec<(&Node<M>, &Node<M>), 64>; 4] = [const { SmallVec::new() }; 4];
         let mut players: SmallVec<Player<M>, 64> = SmallVec::new();
         let mut nodes: [&Node<M>; 4] = core::array::from_fn(|idx| &self.roots[idx]);
+        let mut knowledges: [Knowledge<M>; 4] = self.knowledge.clone();
 
         // Select
         loop {
@@ -160,6 +174,9 @@ impl<M: MCTS> SearchTree<M> {
             nodes = new_nodes;
 
             state.make_move(&choice.mv);
+            for k in &mut knowledges {
+                state.update_knowledge(&choice.mv, k);
+            }
         }
 
         // Rollout
