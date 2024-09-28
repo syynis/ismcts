@@ -57,6 +57,17 @@ impl<M: MCTS> MoveInfo<M> {
     }
 
     #[must_use]
+    pub fn computed_stats(&self) -> ComputedStats {
+        ComputedStats {
+            visits: self.visits(),
+            availability_count: self.availability(),
+            sum_evaluations: self.sum_rewards(),
+            mean_action_value: self.sum_rewards() as f64 / self.visits() as f64,
+            availability: ((1.0 + self.availability() as f64).ln() / self.visits() as f64).sqrt(),
+        }
+    }
+
+    #[must_use]
     pub fn child(&self) -> Option<NodeHandle<M>> {
         let ptr = self.child.load(Ordering::Relaxed);
         if ptr.is_null() {

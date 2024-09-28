@@ -114,7 +114,6 @@ impl<M: MCTS> Tree<M> {
                     .filter(|lmv| node_moves.is_empty() || !node_moves.iter().any(|c| c.mv == *lmv))
                     .collect_vec()
             };
-
             let any_untried = !untried.is_empty();
             if any_untried {
                 let choice = untried.into_iter().choose(&mut thread_rng()).unwrap();
@@ -125,31 +124,49 @@ impl<M: MCTS> Tree<M> {
                     .push(MoveInfo::new(choice));
             }
 
-            let node_moves = target_node.moves.read().unwrap();
-            // Get the children corresponding to all legal moves
-            let moves = {
-                legal_moves
-                    .clone()
-                    .into_iter()
-                    .filter_map(|mv| node_moves.iter().find(|child_mv| child_mv.mv == mv))
-                    .collect_vec()
-            };
-
             // Select
-            let choice = if any_untried {
-                node_moves.last().unwrap()
-            } else {
-                // We know there are no untried moves and there is at least one legal move.
-                // This means all legal moves have been expanded once already
-                debug_assert!(!moves.is_empty());
+            let choice_mv = {
+                let node_moves = target_node.moves.read().unwrap();
+                let choice = if any_untried {
+                    node_moves.last().unwrap()
+                } else {
+                    // Get the children corresponding to all legal moves
+                    let moves = {
+                        legal_moves
+                            .clone()
+                            .into_iter()
+                            .filter_map(|mv| node_moves.iter().find(|child_mv| child_mv.mv == mv))
+                            .collect_vec()
+                    };
+                    // We know there are no untried moves and there is at least one legal move.
+                    // This means all legal moves have been expanded once already
+                    debug_assert!(!moves.is_empty());
 
-                self.policy
-                    .choose(moves.iter().copied(), self.make_handle(target_node, tld))
-                    .1
+                    self.policy
+                        .choose(moves.iter().copied(), self.make_handle(target_node, tld))
+                        .1
+                };
+                choice.stats.down(&self.manager);
+                choice.mv.clone()
             };
 
-            choice.stats.down(&self.manager);
+            for node in nodes {
+                if !node
+                    .moves
+                    .read()
+                    .unwrap()
+                    .iter()
+                    .any(|mv| choice_mv == mv.mv)
+                {
+                    node.moves
+                        .write()
+                        .unwrap()
+                        .push(MoveInfo::new(choice_mv.clone()));
+                }
+            }
+
             players.push(state.current_player());
+            state.make_move(&choice_mv);
             let new_nodes = core::array::from_fn(|idx| {
                 let node = nodes[idx];
                 // Increment availability count for each legal move we have in the current determinization
@@ -162,22 +179,23 @@ impl<M: MCTS> Tree<M> {
                         .for_each(|m| m.stats.increment_available());
                 }
                 // Expand
-                let (new_node, _, choice_idx) = self.descend(&state, &choice.mv, node, tld);
+                let (new_node, _, choice_idx) = self.descend(&state, &choice_mv, node, tld);
                 node_path[idx].push((node, new_node));
                 path_indices[idx].push(choice_idx);
                 new_node.stats.down(&self.manager);
                 new_node
             });
+            if any_untried {
+                break;
+            }
             nodes = new_nodes;
-
-            state.make_move(&choice.mv);
             for k in &mut knowledges {
-                state.update_knowledge(&choice.mv, k);
+                state.update_knowledge(&choice_mv, k);
             }
         }
 
         // Rollout
-        let rollout_eval = Self::rollout(&mut state, &self.eval, None);
+        let rollout_eval = Self::rollout(&mut state, &self.eval, Some(4));
         // Backprop
         for (idx, _) in nodes.iter().enumerate() {
             self.backpropagation(&path_indices[idx], &node_path[idx], &players, &rollout_eval);
@@ -228,21 +246,11 @@ impl<M: MCTS> Tree<M> {
         tld: &'b mut ThreadData<M>,
     ) -> (&'a Node<M>, bool, usize) {
         let read = &current_node.moves.read().unwrap();
-        let (choice, idx) = if let Some((choice, idx)) = read
+        let (choice, idx) = read
             .iter()
             .enumerate()
             .find_map(|(idx, mv_info)| (mv_info.mv == *choice).then_some((mv_info, idx)))
-        {
-            (choice, idx)
-        } else {
-            current_node
-                .moves
-                .write()
-                .unwrap()
-                .push(MoveInfo::new(choice.clone()));
-            let choice = read.last().unwrap();
-            (choice, read.len() - 1)
-        };
+            .expect("Should exist");
         let child = choice.child.load(Ordering::Relaxed).cast_const();
         if !child.is_null() {
             return unsafe { (&*child, false, idx) };
@@ -349,9 +357,11 @@ impl<M: MCTS> Tree<M> {
             .filter(|x| legal.clone().into_iter().any(|l| x.mv == l))
             .collect();
         moves.sort_by_key(|x| x.visits());
+        println!("---------------------------------------------------------");
         for mv in moves.iter().rev() {
-            println!("{:?} {}", mv.mv, mv.visits());
+            println!("Move: {:?}\nStats: {:?}", mv.mv, mv.computed_stats());
         }
+        println!("---------------------------------------------------------");
     }
 
     pub fn print_stats(&self) {

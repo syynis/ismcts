@@ -95,6 +95,10 @@ where
         self.tree().display_moves();
     }
 
+    pub fn print_root_legal_moves(&self) {
+        self.tree().display_legal_moves();
+    }
+
     pub fn stats(&self) -> Vec<ComputedStats> {
         self.tree().root().stats()
     }
