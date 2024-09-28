@@ -20,10 +20,6 @@ where
         }
     }
 
-    pub fn print_stats(&self) {
-        self.search_tree.print_stats();
-    }
-
     pub fn playout(&mut self) {
         if self.tld.is_none() {
             self.tld = Some(ThreadData::default());
@@ -91,15 +87,23 @@ where
         self.tree().root().moves()
     }
 
+    pub fn stats(&self) -> Vec<ComputedStats> {
+        self.tree().root().stats()
+    }
+
+    pub fn print_stats(&self) {
+        self.search_tree.print_stats();
+    }
+
+    pub fn print_knowledge(&self) {
+        self.search_tree.print_knowledge();
+    }
+
     pub fn print_root_moves(&self) {
         self.tree().display_moves();
     }
 
     pub fn print_root_legal_moves(&self) {
         self.tree().display_legal_moves();
-    }
-
-    pub fn stats(&self) -> Vec<ComputedStats> {
-        self.tree().root().stats()
     }
 }

@@ -98,7 +98,8 @@ impl<M: MCTS> Tree<M> {
             }
             let legal_moves = state.legal_moves();
             let to_move = state.current_player();
-            let target_node: &Node<M> = nodes[to_move.into()];
+            let to_move_idx: usize = to_move.into();
+            let target_node: &Node<M> = nodes[to_move_idx];
 
             let no_legal_moves = legal_moves.clone().into_iter().count() == 0;
             if no_legal_moves {
@@ -395,6 +396,12 @@ impl<M: MCTS> Tree<M> {
     pub fn root(&self) -> NodeHandle<M> {
         NodeHandle {
             node: &self.roots[self.root_state.current_player().into()],
+        }
+    }
+
+    pub fn print_knowledge(&self) {
+        for k in &self.knowledge {
+            println!("{k:?}");
         }
     }
 }

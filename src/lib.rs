@@ -50,7 +50,7 @@ pub trait GameState: Clone {
     type Move: Sync + Send + Clone + PartialEq + std::fmt::Debug;
     type Player: Sync + std::fmt::Debug + PartialEq + From<usize> + Into<usize>;
     type MoveList: std::iter::IntoIterator<Item = Self::Move> + Clone;
-    type Knowledge: Sync + Clone;
+    type Knowledge: Sync + Clone + std::fmt::Debug;
 
     fn current_player(&self) -> Self::Player;
     fn legal_moves(&self) -> Self::MoveList;
