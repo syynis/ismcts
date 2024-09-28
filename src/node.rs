@@ -56,6 +56,7 @@ impl<M: MCTS> MoveInfo<M> {
         self.stats.sum_evaluations.load(Ordering::Relaxed)
     }
 
+    #[allow(clippy::cast_precision_loss)]
     #[must_use]
     pub fn computed_stats(&self) -> ComputedStats {
         ComputedStats {

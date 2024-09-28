@@ -71,7 +71,7 @@ impl<M: MCTS> Tree<M> {
             std::mem::forget(new_root);
         }
     }
-
+    #[allow(clippy::too_many_lines)]
     #[must_use]
     pub fn playout(&self, tld: &mut ThreadData<M>) -> bool {
         let sentinel = IncreaseSentinel::new(&self.num_nodes);
