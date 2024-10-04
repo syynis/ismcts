@@ -167,6 +167,9 @@ impl<M: MCTS> Tree<M> {
             }
 
             players.push(state.current_player());
+            for k in &mut knowledges {
+                state.update_knowledge(&choice_mv, k);
+            }
             state.make_move(&choice_mv);
             let new_nodes = core::array::from_fn(|idx| {
                 let node = nodes[idx];
@@ -190,9 +193,6 @@ impl<M: MCTS> Tree<M> {
                 break;
             }
             nodes = new_nodes;
-            for k in &mut knowledges {
-                state.update_knowledge(&choice_mv, k);
-            }
         }
 
         // Rollout
