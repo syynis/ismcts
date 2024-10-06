@@ -11,7 +11,7 @@ pub mod policies;
 pub mod search;
 
 pub trait MCTS: Sized + Sync {
-    type State: GameState + Sync;
+    type State: GameState + Sync + std::fmt::Debug;
     type Eval: Evaluator<Self> + Sync;
     type Select: Policy<Self> + Sync;
 

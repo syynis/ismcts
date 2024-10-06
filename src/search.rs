@@ -43,11 +43,11 @@ impl<M: MCTS> Tree<M> {
     pub fn advance(&mut self, mv: &Move<M>) {
         // advance state
         let mut new_state = self.root_state.clone();
+        for k in &mut self.knowledge {
+            new_state.update_knowledge(mv, k);
+        }
         new_state.make_move(mv);
         self.root_state = new_state;
-        for k in &mut self.knowledge {
-            self.root_state.update_knowledge(mv, k);
-        }
 
         for root in &mut self.roots {
             let child_idx = {
@@ -89,7 +89,8 @@ impl<M: MCTS> Tree<M> {
         let mut node_path: [SmallVec<(&Node<M>, &Node<M>), 64>; 4] = [const { SmallVec::new() }; 4];
         let mut players: SmallVec<Player<M>, 64> = SmallVec::new();
         let mut nodes: [&Node<M>; 4] = core::array::from_fn(|idx| &self.roots[idx]);
-        let mut knowledges: [Knowledge<M>; 4] = self.knowledge.clone();
+        let mut knowledges: [_; 4] =
+            core::array::from_fn(|i| state.knowledge_from_state(Player::<M>::from(i)));
 
         // Select
         loop {
