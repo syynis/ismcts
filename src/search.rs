@@ -89,13 +89,8 @@ impl<M: MCTS> Tree<M> {
         let mut node_path: [SmallVec<(&Node<M>, &Node<M>), 64>; 4] = [const { SmallVec::new() }; 4];
         let mut players: SmallVec<Player<M>, 64> = SmallVec::new();
         let mut nodes: [&Node<M>; 4] = core::array::from_fn(|idx| &self.roots[idx]);
-        let mut knowledges: [_; 4] = core::array::from_fn(|i| {
-            if i == state.current_player().into() {
-                self.knowledge[i].clone()
-            } else {
-                state.knowledge_from_state(Player::<M>::from(i))
-            }
-        });
+        let mut knowledges: [_; 4] =
+            core::array::from_fn(|i| state.new_knowledge(Player::<M>::from(i)));
 
         // Select
         loop {

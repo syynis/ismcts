@@ -57,6 +57,7 @@ pub trait GameState: Clone {
     fn make_move(&mut self, mv: &Self::Move);
     fn randomize_determination(&mut self, observer: Self::Player, knowledge: &Self::Knowledge);
     fn update_knowledge(&self, mv: &Self::Move, knowledge: &mut Self::Knowledge);
+    fn new_knowledge(&self, observer: Self::Player) -> Self::Knowledge;
     fn knowledge_from_state(&self, observer: Self::Player) -> Self::Knowledge;
 }
 
