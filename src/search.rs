@@ -142,7 +142,7 @@ impl<M: MCTS> Tree<M> {
                     };
                     // We know there are no untried moves and there is at least one legal move.
                     // This means all legal moves have been expanded once already
-                    debug_assert!(!moves.is_empty());
+                    assert!(!moves.is_empty());
 
                     self.policy
                         .choose(moves.iter().copied(), self.make_handle(target_node, tld))
