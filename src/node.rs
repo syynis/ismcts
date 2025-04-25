@@ -150,7 +150,7 @@ pub struct NodeHandle<'a, M: 'a + MCTS> {
 }
 
 #[allow(clippy::cast_precision_loss)]
-impl<'a, M: MCTS> NodeHandle<'a, M> {
+impl<M: MCTS> NodeHandle<'_, M> {
     #[must_use]
     pub fn moves(&self) -> Vec<Move<M>> {
         self.node
@@ -187,4 +187,18 @@ pub struct ComputedStats {
     pub sum_evaluations: i64,
     pub mean_action_value: f64,
     pub availability: f64,
+}
+
+impl std::fmt::Display for ComputedStats {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(
+            f,
+            "Visits: {}, Avail: {}, Avail %: {:.3}, Eval: {}, Eval %: {:.3}",
+            self.visits,
+            self.availability_count,
+            self.availability,
+            self.sum_evaluations,
+            self.mean_action_value
+        )
+    }
 }

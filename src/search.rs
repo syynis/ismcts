@@ -115,7 +115,6 @@ impl<M: MCTS> Tree<M> {
                     .collect_vec()
             };
             let any_untried = !untried.is_empty();
-            if any_untried {}
 
             // Select
             let choice_mv = if any_untried {
@@ -331,17 +330,23 @@ impl<M: MCTS> Tree<M> {
         res
     }
 
-    pub fn display_moves(&self) {
+    pub fn display_moves(&self)
+    where
+        Move<M>: std::fmt::Display,
+    {
         let player_idx = self.root_state.current_player().into();
         let inner = self.roots[player_idx].moves.read().unwrap();
         let mut moves: Vec<&MoveInfo<M>> = inner.iter().collect();
         moves.sort_by_key(|x| x.visits());
         for mv in moves {
-            println!("{:?} {}", mv.mv, mv.visits());
+            println!("{} {}", mv.mv, mv.visits());
         }
     }
 
-    pub fn display_legal_moves(&self) {
+    pub fn display_legal_moves(&self)
+    where
+        Move<M>: std::fmt::Display,
+    {
         let player_idx = self.root_state.current_player().into();
         let inner = self.roots[player_idx].moves.read().unwrap();
         let legal = self.root_state.legal_moves();
@@ -353,12 +358,15 @@ impl<M: MCTS> Tree<M> {
         moves.sort_by_key(|x| x.visits());
         println!("---------------------------------------------------------");
         for mv in moves.iter().rev() {
-            println!("Move: {:?}\nStats: {:?}", mv.mv, mv.computed_stats());
+            print!("Move: {}\nStats: {}", mv.mv, mv.computed_stats());
         }
         println!("---------------------------------------------------------");
     }
 
-    pub fn print_stats(&self) {
+    pub fn print_stats(&self)
+    where
+        Move<M>: std::fmt::Debug,
+    {
         println!("{} nodes", self.num_nodes.load(Ordering::Relaxed));
         println!(
             "{} e/c events",
@@ -392,7 +400,10 @@ impl<M: MCTS> Tree<M> {
         }
     }
 
-    pub fn print_knowledge(&self) {
+    pub fn print_knowledge(&self)
+    where
+        Knowledge<M>: std::fmt::Debug,
+    {
         for k in &self.knowledge {
             println!("{k:?}");
         }
@@ -435,7 +446,7 @@ impl<'a> IncreaseSentinel<'a> {
     }
 }
 
-impl<'a> Drop for IncreaseSentinel<'a> {
+impl Drop for IncreaseSentinel<'_> {
     fn drop(&mut self) {
         self.x.fetch_sub(1, Ordering::Relaxed);
     }

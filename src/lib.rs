@@ -47,10 +47,10 @@ pub type Knowledge<M> = <<M as MCTS>::State as GameState>::Knowledge;
 pub type TreePolicyThreadData<M> = <<M as MCTS>::Select as Policy<M>>::ThreadLocalData;
 
 pub trait GameState: Clone {
-    type Move: Sync + Send + Clone + PartialEq + std::fmt::Debug;
+    type Move: Sync + Send + Clone + PartialEq;
     type Player: Sync + std::fmt::Debug + PartialEq + From<usize> + Into<usize>;
     type MoveList: std::iter::IntoIterator<Item = Self::Move> + Clone;
-    type Knowledge: Sync + Clone + std::fmt::Debug;
+    type Knowledge: Sync + Clone;
 
     fn current_player(&self) -> Self::Player;
     fn legal_moves(&self) -> Self::MoveList;

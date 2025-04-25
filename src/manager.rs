@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicIsize, Ordering};
 
 use itertools::Itertools;
 
-use crate::{node::ComputedStats, search::Tree, GameState, Move, ThreadData, MCTS};
+use crate::{node::ComputedStats, search::Tree, GameState, Knowledge, Move, ThreadData, MCTS};
 
 pub struct Manager<M: MCTS> {
     search_tree: Tree<M>,
@@ -101,19 +101,31 @@ where
         self.tree().root().stats()
     }
 
-    pub fn print_stats(&self) {
+    pub fn print_stats(&self)
+    where
+        Move<M>: std::fmt::Debug,
+    {
         self.search_tree.print_stats();
     }
 
-    pub fn print_knowledge(&self) {
+    pub fn print_knowledge(&self)
+    where
+        Knowledge<M>: std::fmt::Debug,
+    {
         self.search_tree.print_knowledge();
     }
 
-    pub fn print_root_moves(&self) {
+    pub fn print_root_moves(&self)
+    where
+        Move<M>: std::fmt::Display,
+    {
         self.tree().display_moves();
     }
 
-    pub fn print_root_legal_moves(&self) {
+    pub fn print_root_legal_moves(&self)
+    where
+        Move<M>: std::fmt::Display,
+    {
         self.tree().display_legal_moves();
     }
 }
