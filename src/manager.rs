@@ -1,5 +1,7 @@
 use std::sync::atomic::{AtomicIsize, Ordering};
 
+use itertools::Itertools;
+
 use crate::{node::ComputedStats, search::Tree, GameState, Move, ThreadData, MCTS};
 
 pub struct Manager<M: MCTS> {
@@ -85,6 +87,14 @@ where
 
     pub fn moves(&self) -> Vec<Move<M>> {
         self.tree().root().moves()
+    }
+
+    pub fn legal_moves(&self) -> Vec<Move<M>> {
+        self.tree()
+            .root_state()
+            .legal_moves()
+            .into_iter()
+            .collect_vec()
     }
 
     pub fn stats(&self) -> Vec<ComputedStats> {

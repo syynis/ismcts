@@ -89,8 +89,6 @@ impl<M: MCTS> Tree<M> {
         let mut node_path: [SmallVec<(&Node<M>, &Node<M>), 64>; 4] = [const { SmallVec::new() }; 4];
         let mut players: SmallVec<Player<M>, 64> = SmallVec::new();
         let mut nodes: [&Node<M>; 4] = core::array::from_fn(|idx| &self.roots[idx]);
-        let mut knowledges: [_; 4] =
-            core::array::from_fn(|i| state.new_knowledge(Player::<M>::from(i)));
 
         // Select
         loop {
@@ -117,37 +115,34 @@ impl<M: MCTS> Tree<M> {
                     .collect_vec()
             };
             let any_untried = !untried.is_empty();
-            if any_untried {
-                let choice = untried.into_iter().choose(&mut thread_rng()).unwrap();
-                target_node
-                    .moves
-                    .write()
-                    .unwrap()
-                    .push(MoveInfo::new(choice));
-            }
+            if any_untried {}
 
             // Select
-            let choice_mv = {
+            let choice_mv = if any_untried {
+                let mut node_moves = target_node.moves.write().unwrap();
+                let choice = untried.into_iter().choose(&mut thread_rng()).unwrap();
+                node_moves.push(MoveInfo::new(choice));
+                let choice = node_moves.last().unwrap();
+                choice.stats.down(&self.manager);
+                choice.mv.clone()
+            } else {
                 let node_moves = target_node.moves.read().unwrap();
-                let choice = if any_untried {
-                    node_moves.last().unwrap()
-                } else {
-                    // Get the children corresponding to all legal moves
-                    let moves = {
-                        legal_moves
-                            .clone()
-                            .into_iter()
-                            .filter_map(|mv| node_moves.iter().find(|child_mv| child_mv.mv == mv))
-                            .collect_vec()
-                    };
-                    // We know there are no untried moves and there is at least one legal move.
-                    // This means all legal moves have been expanded once already
-                    assert!(!moves.is_empty());
-
-                    self.policy
-                        .choose(moves.iter().copied(), self.make_handle(target_node, tld))
-                        .1
+                // Get the children corresponding to all legal moves
+                let moves = {
+                    legal_moves
+                        .clone()
+                        .into_iter()
+                        .filter_map(|mv| node_moves.iter().find(|child_mv| child_mv.mv == mv))
+                        .collect_vec()
                 };
+                // We know there are no untried moves and there is at least one legal move.
+                // This means all legal moves have been expanded once already
+                assert!(!moves.is_empty());
+
+                let choice = self
+                    .policy
+                    .choose(moves.iter().copied(), self.make_handle(target_node, tld))
+                    .1;
                 choice.stats.down(&self.manager);
                 choice.mv.clone()
             };
@@ -168,9 +163,6 @@ impl<M: MCTS> Tree<M> {
             }
 
             players.push(state.current_player());
-            for k in &mut knowledges {
-                state.update_knowledge(&choice_mv, k);
-            }
             state.make_move(&choice_mv);
             let new_nodes = core::array::from_fn(|idx| {
                 let node = nodes[idx];
