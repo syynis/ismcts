@@ -188,7 +188,7 @@ impl<M: MCTS> Tree<M> {
         }
 
         // Rollout
-        let rollout_eval = Self::rollout(&mut state, &self.eval, Some(4));
+        let rollout_eval = Self::rollout(&mut state, &self.eval, Some(20));
         // Backprop
         for (idx, _) in nodes.iter().enumerate() {
             self.backpropagation(&path_indices[idx], &node_path[idx], &players, &rollout_eval);
