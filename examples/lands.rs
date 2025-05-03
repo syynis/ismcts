@@ -583,7 +583,7 @@ impl MCTS for AI {
 
 fn main() {
     let mut input = String::new();
-    let mut mcts = Manager::new(LandsGame::new(23), AI, UCTPolicy(0.7), GameEval);
+    let mut mcts: Manager<AI, 2> = Manager::new(LandsGame::new(23), AI, UCTPolicy(0.7), GameEval);
     println!("{}", mcts.tree().root_state());
 
     mcts.playout_n_parallel(5_000, 8);

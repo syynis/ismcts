@@ -12,10 +12,10 @@ use crate::{
     Evaluator, GameState, Knowledge, Move, Player, Policy, StateEval, ThreadData, MCTS,
 };
 
-pub struct Tree<M: MCTS> {
-    roots: [Node<M>; 4],
+pub struct Tree<M: MCTS, const N: usize> {
+    roots: [Node<M>; N],
     root_state: M::State,
-    knowledge: [Knowledge<M>; 4],
+    knowledge: [Knowledge<M>; N],
     policy: M::Select,
     eval: M::Eval,
     manager: M,
@@ -24,7 +24,7 @@ pub struct Tree<M: MCTS> {
     expansion_contention_events: AtomicUsize,
 }
 
-impl<M: MCTS> Tree<M> {
+impl<M: MCTS, const N: usize> Tree<M, N> {
     #[must_use]
     pub fn new(state: M::State, manager: M, policy: M::Select, eval: M::Eval) -> Self {
         let knowledge = core::array::from_fn(|i| state.knowledge_from_state(Player::<M>::from(i)));
@@ -85,10 +85,10 @@ impl<M: MCTS> Tree<M> {
             &self.knowledge[state.current_player().into()],
         );
 
-        let mut path_indices: [SmallVec<usize, 64>; 4] = [const { SmallVec::new() }; 4];
-        let mut node_path: [SmallVec<(&Node<M>, &Node<M>), 64>; 4] = [const { SmallVec::new() }; 4];
+        let mut path_indices: [SmallVec<usize, 64>; N] = [const { SmallVec::new() }; N];
+        let mut node_path: [SmallVec<(&Node<M>, &Node<M>), 64>; N] = [const { SmallVec::new() }; N];
         let mut players: SmallVec<Player<M>, 64> = SmallVec::new();
-        let mut nodes: [&Node<M>; 4] = core::array::from_fn(|idx| &self.roots[idx]);
+        let mut nodes: [&Node<M>; N] = core::array::from_fn(|idx| &self.roots[idx]);
 
         // Select
         loop {
@@ -287,7 +287,7 @@ impl<M: MCTS> Tree<M> {
     pub fn pv(&self, num_moves: usize) -> Vec<Move<M>> {
         let mut res = Vec::new();
         let mut curr_player: usize = self.root_state.current_player().into();
-        let mut curr: [&Node<M>; 4] = core::array::from_fn(|i| &self.roots[i]);
+        let mut curr: [&Node<M>; N] = core::array::from_fn(|i| &self.roots[i]);
         let mut curr_state = self.root_state.clone();
 
         while curr_state.legal_moves().into_iter().count() > 0 && res.len() < num_moves {
@@ -309,7 +309,7 @@ impl<M: MCTS> Tree<M> {
                 res.push(choice.clone());
                 curr_state.make_move(&choice);
                 curr_player = curr_state.current_player().into();
-                let new_nodes: [Option<&Node<M>>; 4] = core::array::from_fn(|idx| {
+                let new_nodes: [Option<&Node<M>>; N] = core::array::from_fn(|idx| {
                     let node = curr[idx];
                     let read = &node.moves.read().unwrap();
                     let child = read.iter().find(|m| m.mv == choice);
@@ -318,7 +318,7 @@ impl<M: MCTS> Tree<M> {
                     next.flatten()
                 });
                 if new_nodes.iter().all(std::option::Option::is_some) {
-                    let new: [&Node<M>; 4] = core::array::from_fn(|idx| new_nodes[idx].unwrap());
+                    let new: [&Node<M>; N] = core::array::from_fn(|idx| new_nodes[idx].unwrap());
                     curr = new;
                 } else {
                     break;

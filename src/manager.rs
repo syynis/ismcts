@@ -4,13 +4,13 @@ use itertools::Itertools;
 
 use crate::{node::ComputedStats, search::Tree, GameState, Knowledge, Move, ThreadData, MCTS};
 
-pub struct Manager<M: MCTS> {
-    search_tree: Tree<M>,
+pub struct Manager<M: MCTS, const N: usize> {
+    search_tree: Tree<M, N>,
     tld: Option<ThreadData<M>>,
 }
 
 #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
-impl<M: MCTS> Manager<M>
+impl<M: MCTS, const N: usize> Manager<M, N>
 where
     ThreadData<M>: Default,
 {
@@ -56,7 +56,7 @@ where
         });
     }
 
-    pub fn tree(&self) -> &Tree<M> {
+    pub fn tree(&self) -> &Tree<M, N> {
         &self.search_tree
     }
 
