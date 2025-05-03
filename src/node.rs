@@ -64,7 +64,8 @@ impl<M: MCTS> MoveInfo<M> {
             availability_count: self.availability(),
             sum_evaluations: self.sum_rewards(),
             mean_action_value: self.sum_rewards() as f64 / self.visits() as f64,
-            availability: ((1.0 + self.availability() as f64).ln() / self.visits() as f64).sqrt(),
+            availability: 2.0
+                * ((1.0 + self.availability() as f64).ln() / self.visits() as f64).sqrt(),
         }
     }
 
