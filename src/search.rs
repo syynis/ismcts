@@ -332,20 +332,20 @@ impl<M: MCTS, const N: usize> Tree<M, N> {
 
     pub fn display_moves(&self)
     where
-        Move<M>: std::fmt::Display,
+        Move<M>: std::fmt::Debug,
     {
         let player_idx = self.root_state.current_player().into();
         let inner = self.roots[player_idx].moves.read().unwrap();
         let mut moves: Vec<&MoveInfo<M>> = inner.iter().collect();
         moves.sort_by_key(|x| x.visits());
         for mv in moves {
-            println!("{} {}", mv.mv, mv.visits());
+            println!("{:?} {}", mv.mv, mv.visits());
         }
     }
 
     pub fn display_legal_moves(&self)
     where
-        Move<M>: std::fmt::Display,
+        Move<M>: std::fmt::Debug,
     {
         let player_idx = self.root_state.current_player().into();
         let inner = self.roots[player_idx].moves.read().unwrap();
@@ -358,7 +358,7 @@ impl<M: MCTS, const N: usize> Tree<M, N> {
         moves.sort_by_key(|x| x.visits());
         println!("---------------------------------------------------------");
         for mv in moves.iter().rev() {
-            print!("Move: {}\nStats: {}", mv.mv, mv.computed_stats());
+            print!("Move: {:?}\nStats: {}", mv.mv, mv.computed_stats());
         }
         println!("---------------------------------------------------------");
     }

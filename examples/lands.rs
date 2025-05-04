@@ -146,7 +146,7 @@ impl HandKnowledge {
                                 }
                             }
                         }
-                        if self.observer != player {
+                        if self.observer == player {
                             self.on_draw();
                         }
                     }
@@ -312,31 +312,37 @@ impl LandsGame {
             || self.in_play[player as usize].values().all(|v| *v > 0)
     }
 
-    fn determinize_hand_with_knowledge(&mut self, player: Player, knowledge: &HandKnowledge) {
-        let hand = &mut self.hands[player as usize];
-        let count = hand.values().sum::<u8>();
+    fn determinize_hand_with_knowledge(&mut self, observer: Player, knowledge: &HandKnowledge) {
+        let observer_hand = self.hands[observer as usize].clone();
+        let enemy_hand = &mut self.hands[observer.next() as usize];
+        let count = enemy_hand.values().sum::<u8>();
         let knowledge_count = knowledge.count_known();
 
-        assert!(knowledge_count + knowledge.amount_unknown == count);
+        assert_eq!(
+            knowledge_count + knowledge.amount_unknown,
+            count,
+            "{knowledge_count} {}",
+            knowledge.amount_unknown
+        );
 
         let mut unknown = 0;
         // Put back cards into deck
         for ((card, hand_count), knowledge_entry) in
-            hand.clone().iter().zip(knowledge.enemy_hand.values())
+            enemy_hand.clone().iter().zip(knowledge.enemy_hand.values())
         {
             let knowledge_amount = knowledge_entry.map_or(0, |e| e.amount());
             let amount = hand_count - knowledge_amount;
             unknown += amount;
-            hand[card] = knowledge_amount;
+            enemy_hand[card] = knowledge_amount;
             (0..amount).for_each(|_| self.deck.push(card));
         }
 
-        assert!(unknown == knowledge.amount_unknown);
+        assert_eq!(unknown, knowledge.amount_unknown);
 
         self.deck.shuffle(&mut rand::thread_rng());
         // Draw new hand
         (0..unknown).for_each(|_| {
-            hand[self.deck.pop().expect("Not empty")] += 1;
+            enemy_hand[self.deck.pop().expect("Not empty")] += 1;
         });
     }
 }
@@ -548,7 +554,7 @@ impl Evaluator<AI> for GameEval {
                 .values()
                 .sum::<u8>() as i64
             - state.hand(state.opponent()).values().sum::<u8>() as i64;
-        devotion + domain + card_advantage + won
+        devotion * 2 + domain * 2 + card_advantage + won
     }
 
     fn eval_existing(
@@ -577,31 +583,28 @@ impl MCTS for AI {
     type Select = UCTPolicy;
 
     fn virtual_loss(&self) -> i64 {
-        0
+        1
     }
 }
 
 fn main() {
     let mut input = String::new();
-    let mut mcts: Manager<AI, 2> = Manager::new(LandsGame::new(23), AI, UCTPolicy(0.7), GameEval);
-    println!("{}", mcts.tree().root_state());
+    let mut mcts: Manager<AI, 2> = Manager::new(LandsGame::new(23), AI, UCTPolicy(7.071), GameEval);
 
-    mcts.playout_n_parallel(5_000, 8);
-    if let Some(best_move) = mcts.best_move() {
-        println!("Make move {:?}", best_move);
-        mcts.advance(&best_move);
-        // mcts.print_root_moves();
-        mcts.print_stats();
+    for i in 0..20 {
+        println!("------------------------");
+        println!("{i}");
+        println!("{}", mcts.tree().root_state());
+        mcts.print_knowledge();
+        mcts.playout_n_parallel(1_500_000, 8);
+        if let Some(best_move) = mcts.best_move() {
+            println!("Make move {:?}", best_move);
+            mcts.advance(&best_move);
+            // mcts.print_root_moves();
+            mcts.print_stats();
+        }
+        println!("------------------------");
     }
-    println!("Second run");
-    mcts.playout_n_parallel(5_000, 8);
-    if let Some(best_move) = mcts.best_move() {
-        println!("Make move {:?}", best_move);
-        mcts.advance(&best_move);
-        // mcts.print_root_moves();
-        mcts.print_stats();
-    }
-
     return;
     loop {
         if io::stdin().read_line(&mut input).is_ok() {

@@ -117,14 +117,14 @@ where
 
     pub fn print_root_moves(&self)
     where
-        Move<M>: std::fmt::Display,
+        Move<M>: std::fmt::Debug,
     {
         self.tree().display_moves();
     }
 
     pub fn print_root_legal_moves(&self)
     where
-        Move<M>: std::fmt::Display,
+        Move<M>: std::fmt::Debug,
     {
         self.tree().display_legal_moves();
     }
