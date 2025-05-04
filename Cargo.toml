@@ -4,12 +4,19 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-smallvec = {workspace = true}
-rayon = {workspace = true}
-rand = {workspace = true}
-rand_xorshift = {workspace = true}
-itertools = {workspace = true}
-enum-map = {workspace = true}
-crossbeam = {workspace = true}
+smallvec = {version = "2.0.0-alpha.6", features = ["serde"]}
+rand_xorshift = {version = "0.3"}
+rayon = {version = "1.1"}
+rand = {version = "0.8.5"}
+itertools = {version = "0.12.1"}
+enum-map = {version = "2.7.3"}
+crossbeam = {version = "0.8.4"}
+
+[profile.dev]
+opt-level = 1
+incremental = true
+
+[profile.dev.package."*"]
+opt-level = 3
 
 [features]
