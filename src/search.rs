@@ -41,7 +41,7 @@ impl<M: MCTS, const N: usize> Tree<M, N> {
     }
 
     pub fn advance(&mut self, mv: &Move<M>) {
-        // advance state
+        // Advance root state by making move and updating knowledge
         let mut new_state = self.root_state.clone();
         for k in &mut self.knowledge {
             new_state.update_knowledge(mv, k);
@@ -49,25 +49,28 @@ impl<M: MCTS, const N: usize> Tree<M, N> {
         new_state.make_move(mv);
         self.root_state = new_state;
 
+        // Advance the root node of each subtree.
+        // Also drop branches of the tree that don't belong to the move that was made.
         for root in &mut self.roots {
+            // Find the child corresponding to the move we played
             let child_idx = {
                 let children = root.moves.read().unwrap();
-                // Find the child corresponding to the move we played
-                let idx = children
-                    .iter()
-                    .enumerate()
-                    .find(|(_, x)| x.mv == *mv)
-                    .map(|(idx, _)| idx)
-                    .unwrap();
-                idx
+                children.iter().position(|x| x.mv == *mv).unwrap()
             };
+            // Take ownership of data holding node corresponding to move made.
             let new_root = {
                 let mut moves = root.moves.write().unwrap();
                 moves.remove(child_idx)
             };
+            // Load node pointer
             let new_root_ptr = new_root.child.load(Ordering::SeqCst);
+            // Replace old root with the new root from loaded pointer
             let old_root = std::mem::replace(root, unsafe { *Box::from_raw(new_root_ptr) });
+            // Now drop all hanging branches from tree
             old_root.moves.write().unwrap().clear();
+            // Because we take ownership of new_root above and the scope ends here it would run drop
+            // this prevents that.
+            // TODO There must be a better way to do this
             std::mem::forget(new_root);
         }
     }
@@ -92,9 +95,6 @@ impl<M: MCTS, const N: usize> Tree<M, N> {
 
         // Select
         loop {
-            if path_indices.len() >= self.manager.max_playout_length() {
-                break;
-            }
             let legal_moves = state.legal_moves();
             let to_move = state.current_player();
             let to_move_idx: usize = to_move.into();
@@ -330,6 +330,28 @@ impl<M: MCTS, const N: usize> Tree<M, N> {
         res
     }
 
+    #[must_use]
+    pub fn spec(&self) -> &M {
+        &self.manager
+    }
+
+    #[must_use]
+    pub fn num_nodes(&self) -> usize {
+        self.num_nodes.load(Ordering::SeqCst)
+    }
+
+    #[must_use]
+    pub fn root_state(&self) -> &M::State {
+        &self.root_state
+    }
+
+    #[must_use]
+    pub fn root(&self) -> NodeHandle<M> {
+        NodeHandle {
+            node: &self.roots[self.root_state.current_player().into()],
+        }
+    }
+
     pub fn display_moves(&self)
     where
         Move<M>: std::fmt::Debug,
@@ -375,28 +397,6 @@ impl<M: MCTS, const N: usize> Tree<M, N> {
 
         for (s, m) in self.root().stats().iter().zip(self.root().moves().iter()) {
             println!("{s:?} {m:?}");
-        }
-    }
-
-    #[must_use]
-    pub fn spec(&self) -> &M {
-        &self.manager
-    }
-
-    #[must_use]
-    pub fn num_nodes(&self) -> usize {
-        self.num_nodes.load(Ordering::SeqCst)
-    }
-
-    #[must_use]
-    pub fn root_state(&self) -> &M::State {
-        &self.root_state
-    }
-
-    #[must_use]
-    pub fn root(&self) -> NodeHandle<M> {
-        NodeHandle {
-            node: &self.roots[self.root_state.current_player().into()],
         }
     }
 

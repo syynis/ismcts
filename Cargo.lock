@@ -102,6 +102,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "ismcts"
+version = "0.1.0"
+dependencies = [
+ "crossbeam",
+ "enum-map",
+ "itertools",
+ "rand",
+ "rand_xorshift",
+ "rayon",
+ "smallvec",
+]
+
+[[package]]
 name = "itertools"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -115,19 +128,6 @@ name = "libc"
 version = "0.2.172"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d750af042f7ef4f724306de029d18836c26c1765a54a6a3f094cbd23a7267ffa"
-
-[[package]]
-name = "mcts"
-version = "0.1.0"
-dependencies = [
- "crossbeam",
- "enum-map",
- "itertools",
- "rand",
- "rand_xorshift",
- "rayon",
- "smallvec",
-]
 
 [[package]]
 name = "ppv-lite86"

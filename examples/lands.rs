@@ -1,10 +1,8 @@
-extern crate mcts;
-
 use std::{fmt::Display, io, time::Instant};
 
 use enum_map::{Enum, EnumMap};
+use ismcts::{manager::Manager, policies::UCTPolicy, *};
 use itertools::Itertools;
-use mcts::{manager::Manager, policies::UCTPolicy, *};
 use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
 
 const CARDS: [Card; 5] = [Card::White, Card::Black, Card::Green, Card::Red, Card::Blue];
@@ -512,10 +510,6 @@ impl GameState for LandsGame {
         knowledge.update_with_move(self, mv);
     }
 
-    fn new_knowledge(&self, observer: Self::Player) -> Self::Knowledge {
-        HandKnowledge::new(observer)
-    }
-
     fn knowledge_from_state(&self, observer: Self::Player) -> Self::Knowledge {
         HandKnowledge::new(observer)
     }
@@ -566,7 +560,7 @@ impl Evaluator<AI> for GameEval {
         *existing
     }
 
-    fn make_relative(&self, eval: &Self::StateEval, player: &mcts::Player<AI>) -> i64 {
+    fn make_relative(&self, eval: &Self::StateEval, player: &ismcts::Player<AI>) -> i64 {
         match player {
             Player::One => *eval,
             Player::Two => -*eval,

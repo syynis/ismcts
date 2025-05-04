@@ -11,7 +11,7 @@ pub mod policies;
 pub mod search;
 
 pub trait MCTS: Sized + Sync {
-    type State: GameState + Sync + std::fmt::Debug;
+    type State: GameState + Sync;
     type Eval: Evaluator<Self> + Sync;
     type Select: Policy<Self> + Sync;
 
@@ -25,10 +25,6 @@ pub trait MCTS: Sized + Sync {
 
     fn visits_before_expansion(&self) -> u64 {
         1
-    }
-
-    fn max_playout_length(&self) -> usize {
-        1_000
     }
 
     fn select_child_after_search<'a>(&self, children: &'a [MoveInfo<Self>]) -> &'a MoveInfo<Self> {
@@ -48,16 +44,15 @@ pub type TreePolicyThreadData<M> = <<M as MCTS>::Select as Policy<M>>::ThreadLoc
 
 pub trait GameState: Clone {
     type Move: Sync + Send + Clone + PartialEq;
-    type Player: Sync + std::fmt::Debug + PartialEq + From<usize> + Into<usize>;
+    type Player: Sync + PartialEq + From<usize> + Into<usize>;
     type MoveList: std::iter::IntoIterator<Item = Self::Move> + Clone;
-    type Knowledge: Sync + Clone;
+    type Knowledge: Sync;
 
     fn current_player(&self) -> Self::Player;
     fn legal_moves(&self) -> Self::MoveList;
     fn make_move(&mut self, mv: &Self::Move);
     fn randomize_determination(&mut self, observer: Self::Player, knowledge: &Self::Knowledge);
     fn update_knowledge(&self, mv: &Self::Move, knowledge: &mut Self::Knowledge);
-    fn new_knowledge(&self, observer: Self::Player) -> Self::Knowledge;
     fn knowledge_from_state(&self, observer: Self::Player) -> Self::Knowledge;
 }
 

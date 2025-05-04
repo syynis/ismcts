@@ -7,6 +7,23 @@ use itertools::Itertools;
 
 use crate::{search::SearchHandle, Evaluator, Move, StateEval, MCTS};
 
+pub struct Node<M: MCTS> {
+    pub moves: RwLock<Vec<MoveInfo<M>>>,
+    pub eval: StateEval<M>,
+    pub stats: Stats,
+}
+
+impl<M: MCTS> Node<M> {
+    #[must_use]
+    pub fn new(eval: &M::Eval, state: &M::State, handle: Option<SearchHandle<M>>) -> Node<M> {
+        Self {
+            moves: Vec::new().into(),
+            eval: eval.eval_new(state, handle),
+            stats: Stats::new(),
+        }
+    }
+}
+
 pub struct MoveInfo<M: MCTS> {
     pub mv: Move<M>,
     pub child: AtomicPtr<Node<M>>,
@@ -76,23 +93,6 @@ impl<M: MCTS> MoveInfo<M> {
             None
         } else {
             unsafe { Some(NodeHandle { node: &*ptr }) }
-        }
-    }
-}
-
-pub struct Node<M: MCTS> {
-    pub moves: RwLock<Vec<MoveInfo<M>>>,
-    pub eval: StateEval<M>,
-    pub stats: Stats,
-}
-
-impl<M: MCTS> Node<M> {
-    #[must_use]
-    pub fn new(eval: &M::Eval, state: &M::State, handle: Option<SearchHandle<M>>) -> Node<M> {
-        Self {
-            moves: Vec::new().into(),
-            eval: eval.eval_new(state, handle),
-            stats: Stats::new(),
         }
     }
 }
