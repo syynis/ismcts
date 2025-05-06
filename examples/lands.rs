@@ -1,4 +1,4 @@
-use std::{fmt::Display, io, time::Instant};
+use std::fmt::Display;
 
 use enum_map::{Enum, EnumMap};
 use ismcts::{manager::Manager, policies::UCTPolicy, *};
@@ -115,38 +115,41 @@ impl HandKnowledge {
                         self.remove(*card);
                         self.remove(Card::Blue);
                     }
-                } else {
-                    if !matches!(first_move, Move::Discard(None))
-                        || !matches!(mv, Move::Counter(None))
-                    {
-                        if !state.countered {
-                            let mut first_move = first_move;
-                            if let Move::Discard(Some(_)) = mv {
+                } else if !(matches!(first_move, Move::Discard(None))
+                    && matches!(mv, Move::Counter(None))
+                    && !state.countered)
+                {
+                    if !state.countered {
+                        let mut first_move = first_move;
+                        if let Move::Discard(Some(_)) = mv {
+                            if self.observer == player {
+                                self.update_from_hand(&state.hands[player.next() as usize]);
+                            }
+                            first_move = *mv;
+                        } else if !matches!(mv, Move::Discard(None)) {
+                            player = player.next();
+                        }
+                        match first_move {
+                            Move::Draw => {
+                                if self.observer != player {
+                                    self.on_draw();
+                                }
+                            }
+                            Move::Discard(Some(card)) => {
                                 if self.observer == player {
-                                    self.update_from_hand(&state.hands[player.next() as usize]);
-                                }
-                                first_move = *mv;
-                            } else if !matches!(mv, Move::Discard(None)) {
-                                player = player.next();
-                            }
-                            if self.observer != player {
-                                match first_move {
-                                    Move::Draw => {
-                                        self.on_draw();
-                                    }
-                                    Move::Discard(Some(card)) => {
-                                        self.remove(card);
-                                    }
-                                    Move::Revive(card) => {
-                                        self.add(card);
-                                    }
-                                    _ => {}
+                                    self.remove(card);
                                 }
                             }
+                            Move::Revive(card) => {
+                                if self.observer != player {
+                                    self.add(card);
+                                }
+                            }
+                            _ => {}
                         }
-                        if self.observer == player {
-                            self.on_draw();
-                        }
+                    }
+                    if self.observer == player {
+                        self.on_draw();
                     }
                 }
             }
@@ -175,10 +178,11 @@ impl HandKnowledge {
 
     fn add(&mut self, card: Card) {
         if let Some(knowledge) = self.enemy_hand[card] {
-            match knowledge {
+            let res = match knowledge {
                 CardKnowledge::Atleast(x) => CardKnowledge::Atleast(x + 1),
                 CardKnowledge::Exact(x) => CardKnowledge::Exact(x + 1),
             };
+            self.enemy_hand[card] = Some(res);
         } else {
             self.enemy_hand[card] = Some(CardKnowledge::Atleast(1));
         }
@@ -187,12 +191,22 @@ impl HandKnowledge {
     fn remove(&mut self, card: Card) {
         if let Some(knowledge) = self.enemy_hand[card] {
             let res = match knowledge {
-                CardKnowledge::Atleast(x) => Some(CardKnowledge::Atleast(x.saturating_sub(1))),
-                CardKnowledge::Exact(x) => Some(CardKnowledge::Exact(x - 1)),
+                CardKnowledge::Atleast(0) => {
+                    self.amount_unknown = self
+                        .amount_unknown
+                        .checked_sub(1)
+                        .expect("Should never be below 0");
+                    CardKnowledge::Atleast(0)
+                }
+                CardKnowledge::Atleast(x) => CardKnowledge::Atleast(x.saturating_sub(1)),
+                CardKnowledge::Exact(x) => CardKnowledge::Exact(x - 1),
             };
-            self.enemy_hand[card] = res;
+            self.enemy_hand[card] = Some(res);
         } else {
-            self.amount_unknown = self.amount_unknown.saturating_sub(1);
+            self.amount_unknown = self
+                .amount_unknown
+                .checked_sub(1)
+                .expect("Should never be below 0");
         }
     }
 }
@@ -311,7 +325,6 @@ impl LandsGame {
     }
 
     fn determinize_hand_with_knowledge(&mut self, observer: Player, knowledge: &HandKnowledge) {
-        let observer_hand = self.hands[observer as usize].clone();
         let enemy_hand = &mut self.hands[observer.next() as usize];
         let count = enemy_hand.values().sum::<u8>();
         let knowledge_count = knowledge.count_known();
@@ -319,7 +332,7 @@ impl LandsGame {
         assert_eq!(
             knowledge_count + knowledge.amount_unknown,
             count,
-            "{knowledge_count} {}",
+            "{knowledge_count} {} {knowledge:?}",
             knowledge.amount_unknown
         );
 
@@ -525,7 +538,7 @@ impl Evaluator<AI> for GameEval {
         state: &<AI as MCTS>::State,
         _handle: Option<search::SearchHandle<AI>>,
     ) -> Self::StateEval {
-        let won = state.won(state.to_move) as i64 * 100;
+        let won = state.won(state.to_move) as i64 * 1000;
         let devotion = *state.in_play[state.to_move as usize]
             .values()
             .max()
@@ -548,7 +561,7 @@ impl Evaluator<AI> for GameEval {
                 .values()
                 .sum::<u8>() as i64
             - state.hand(state.opponent()).values().sum::<u8>() as i64;
-        devotion * 2 + domain * 2 + card_advantage + won
+        devotion * 2 + domain * 2 + card_advantage * 3 + won
     }
 
     fn eval_existing(
@@ -582,89 +595,16 @@ impl MCTS for AI {
 }
 
 fn main() {
-    let mut input = String::new();
     let mut mcts: Manager<AI, 2> = Manager::new(LandsGame::new(23), AI, UCTPolicy(7.071), GameEval);
 
-    for i in 0..20 {
+    mcts.playout_n_parallel(1_000_000, 8);
+    while let Some(best_move) = mcts.best_move() {
         println!("------------------------");
-        println!("{i}");
         println!("{}", mcts.tree().root_state());
+        mcts.print_stats();
+        println!("Make move {:?}", best_move);
+        mcts.advance(&best_move);
         mcts.print_knowledge();
-        mcts.playout_n_parallel(1_500_000, 8);
-        if let Some(best_move) = mcts.best_move() {
-            println!("Make move {:?}", best_move);
-            mcts.advance(&best_move);
-            // mcts.print_root_moves();
-            mcts.print_stats();
-        }
-        println!("------------------------");
-    }
-    return;
-    loop {
-        if io::stdin().read_line(&mut input).is_ok() {
-            if input == "m\n" {
-                // mcts.tree().display_legal_moves();
-                println!("{}", mcts.tree().root_state());
-            } else if input == "lm\n" {
-                println!("{:?}", mcts.tree().root_state().legal_moves());
-            } else if input == "pv\n" {
-                let pv = mcts.pv(500);
-                println!("{:?}", pv);
-            } else if input == "adv\n" {
-                if let Some(best_move) = mcts.best_move() {
-                    println!("Make move {:?}", best_move);
-                    mcts.advance(&best_move);
-                }
-            } else if input == "pmm\n" {
-                let legal_moves = mcts.tree().root_state().legal_moves();
-                if legal_moves.len() == 1 {
-                    println!("Make move {:?}", legal_moves[0]);
-                    mcts.advance(&legal_moves[0]);
-                } else {
-                    mcts.playout_n_parallel(2_500_000, 8);
-                    if let Some(best_move) = mcts.best_move() {
-                        println!("Make move {:?}", best_move);
-                        mcts.advance(&best_move);
-                    }
-                }
-                println!("{}", mcts.tree().root_state());
-            } else if let Ok(number) = input.strip_suffix('\n').unwrap().parse::<usize>() {
-                let mv = mcts.tree().root_state().legal_moves()[number];
-                mcts.advance(&mv);
-            } else if input == "s\n" {
-                println!("{}", mcts.tree().root_state());
-            } else if input == "st\n" {
-                mcts.print_stats();
-            } else if input == "pvs\n" {
-                mcts.pv_states(500)
-                    .iter()
-                    .rev()
-                    .skip(1)
-                    .rev()
-                    .for_each(|s| {
-                        println!("Played move {:?}", s.0.unwrap());
-                        println!("{}", s.1);
-                    });
-            } else if input == "p\n" {
-                let before = Instant::now();
-                // mcts.playout_n_parallel(10, 8);
-                mcts.playout_n(5);
-                let after = Instant::now();
-
-                // mcts.playout_n(1);
-                println!("playout in {}", (after - before).as_secs_f32());
-            } else if input == "p1\n" {
-                mcts.playout_n(1);
-                // mcts.playout_n(1);
-                println!("playout");
-            } else if input == "k\n" {
-                mcts.print_knowledge();
-            } else if input == "q\n" {
-                break;
-            } else {
-                println!("m for moves, q for quit");
-            }
-            input.clear();
-        }
+        mcts.playout_n_parallel(1_000_000, 8);
     }
 }
