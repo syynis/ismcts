@@ -1,9 +1,9 @@
-use std::fmt::Display;
+use std::{fmt::Display, time::Instant};
 
 use enum_map::{Enum, EnumMap};
 use ismcts::{manager::Manager, policies::UCTPolicy, *};
 use itertools::Itertools;
-use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
+use rand::{rngs::StdRng, seq::SliceRandom, thread_rng, Rng, SeedableRng};
 
 const CARDS: [Card; 5] = [Card::White, Card::Black, Card::Green, Card::Red, Card::Blue];
 
@@ -595,16 +595,56 @@ impl MCTS for AI {
 }
 
 fn main() {
-    let mut mcts: Manager<AI, 2> = Manager::new(LandsGame::new(23), AI, UCTPolicy(7.071), GameEval);
+    let mut first_wins = 0;
+    let mut second_wins = 0;
+    let p = 50_000;
+    let t = 8;
+    for i in 0..100 {
+        let (f, s) = if i & 1 == 0 {
+            (17.5, 50.0)
+        } else {
+            (50.0, 17.5)
+        };
+        let seed = thread_rng().gen::<u64>();
+        let mut mcts: Manager<AI, 2> =
+            Manager::new(LandsGame::new(seed), AI, UCTPolicy(f), GameEval);
+        let mut mcts2: Manager<AI, 2> =
+            Manager::new(LandsGame::new(seed), AI, UCTPolicy(s), GameEval);
+        let before = Instant::now();
+        mcts.playout_n_parallel(p, t);
+        let after = Instant::now();
+        println!("time {:?}", (after - before).as_secs_f64());
+        mcts2.playout_n_parallel(p, t);
+        println!("Starting {i} game");
+        loop {
+            let current_player = mcts.tree().root_state().current_player();
+            let best_move = match current_player {
+                Player::One => mcts.best_move(),
+                Player::Two => mcts2.best_move(),
+            };
 
-    mcts.playout_n_parallel(1_000_000, 8);
-    while let Some(best_move) = mcts.best_move() {
-        println!("------------------------");
-        println!("{}", mcts.tree().root_state());
-        mcts.print_stats();
-        println!("Make move {:?}", best_move);
-        mcts.advance(&best_move);
-        mcts.print_knowledge();
-        mcts.playout_n_parallel(1_000_000, 8);
+            if let Some(best_move) = best_move {
+                mcts.advance(&best_move);
+                mcts2.advance(&best_move);
+                mcts.playout_n_parallel(p, t);
+                mcts2.playout_n_parallel(p, t);
+            } else {
+                if mcts.tree().root_state().won(Player::One) {
+                    if i & 1 == 0 {
+                        first_wins += 1;
+                    } else {
+                        second_wins += 1;
+                    }
+                } else {
+                    if i & 1 == 0 {
+                        second_wins += 1;
+                    } else {
+                        first_wins += 1;
+                    }
+                }
+                break;
+            }
+        }
     }
+    println!("{first_wins}, {second_wins}");
 }
