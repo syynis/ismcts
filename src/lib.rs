@@ -57,7 +57,7 @@ pub trait GameState: Clone {
 }
 
 pub trait Evaluator<M: MCTS>: Sync {
-    type StateEval: Sync + Send;
+    type StateEval: Sync + Send + Ord + Clone;
 
     fn eval_new(&self, state: &M::State, handle: Option<SearchHandle<M>>) -> Self::StateEval;
     fn eval_existing(

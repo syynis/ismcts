@@ -2,7 +2,11 @@ use std::sync::atomic::{AtomicIsize, Ordering};
 
 use itertools::Itertools;
 
-use crate::{node::ComputedStats, search::Tree, GameState, Knowledge, Move, ThreadData, MCTS};
+use crate::{
+    node::ComputedStats,
+    search::{SearchConfig, Tree},
+    GameState, Knowledge, Move, ThreadData, MCTS,
+};
 
 pub struct Manager<M: MCTS, const N: usize> {
     search_tree: Tree<M, N>,
@@ -14,8 +18,14 @@ impl<M: MCTS, const N: usize> Manager<M, N>
 where
     ThreadData<M>: Default,
 {
-    pub fn new(state: M::State, manager: M, policy: M::Select, eval: M::Eval) -> Self {
-        let search_tree = Tree::new(state, manager, policy, eval);
+    pub fn new(
+        state: M::State,
+        manager: M,
+        policy: M::Select,
+        eval: M::Eval,
+        config: SearchConfig<M>,
+    ) -> Self {
+        let search_tree = Tree::new(state, manager, policy, eval, config);
         Self {
             search_tree,
             tld: None,

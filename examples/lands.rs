@@ -1,7 +1,7 @@
 use std::{fmt::Display, time::Instant};
 
 use enum_map::{Enum, EnumMap};
-use ismcts::{manager::Manager, policies::UCTPolicy, *};
+use ismcts::{manager::Manager, policies::UCTPolicy, search::SearchConfig, *};
 use itertools::Itertools;
 use rand::{rngs::StdRng, seq::SliceRandom, thread_rng, Rng, SeedableRng};
 
@@ -581,7 +581,7 @@ impl Evaluator<AI> for GameEval {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, Copy)]
 struct AI;
 
 impl MCTS for AI {
@@ -597,54 +597,85 @@ impl MCTS for AI {
 fn main() {
     let mut first_wins = 0;
     let mut second_wins = 0;
+    let mut draws = 0;
     let p = 50_000;
     let t = 8;
-    for i in 0..100 {
-        let (f, s) = if i & 1 == 0 {
-            (17.5, 50.0)
-        } else {
-            (50.0, 17.5)
-        };
-        let seed = thread_rng().gen::<u64>();
-        let mut mcts: Manager<AI, 2> =
-            Manager::new(LandsGame::new(seed), AI, UCTPolicy(f), GameEval);
-        let mut mcts2: Manager<AI, 2> =
-            Manager::new(LandsGame::new(seed), AI, UCTPolicy(s), GameEval);
-        let before = Instant::now();
-        mcts.playout_n_parallel(p, t);
-        let after = Instant::now();
-        println!("time {:?}", (after - before).as_secs_f64());
-        mcts2.playout_n_parallel(p, t);
-        println!("Starting {i} game");
-        loop {
-            let current_player = mcts.tree().root_state().current_player();
-            let best_move = match current_player {
-                Player::One => mcts.best_move(),
-                Player::Two => mcts2.best_move(),
-            };
-
-            if let Some(best_move) = best_move {
-                mcts.advance(&best_move);
-                mcts2.advance(&best_move);
-                mcts.playout_n_parallel(p, t);
-                mcts2.playout_n_parallel(p, t);
+    let config = SearchConfig {
+        best: search::MoveSelection::Robust,
+        fet: Some(15),
+        det: None,
+        ege: Some(0.2),
+    };
+    let config2 = SearchConfig {
+        best: search::MoveSelection::Robust,
+        fet: None,
+        det: None,
+        ege: None,
+    };
+    let before = Instant::now();
+    for i in 0..50 {
+        let mut first_result = None;
+        let mut second_result = None;
+        for j in 0..2 {
+            let (c, c2) = if j == 0 {
+                (config.clone(), config2.clone())
             } else {
-                if mcts.tree().root_state().won(Player::One) {
-                    if i & 1 == 0 {
-                        first_wins += 1;
-                    } else {
-                        second_wins += 1;
-                    }
+                (config2.clone(), config.clone())
+            };
+            let seed = thread_rng().gen::<u64>();
+            let mut first: Manager<AI, 2> =
+                Manager::new(LandsGame::new(seed), AI, UCTPolicy(17.5), GameEval, c);
+            let mut second: Manager<AI, 2> =
+                Manager::new(LandsGame::new(seed), AI, UCTPolicy(17.5), GameEval, c2);
+            first.playout_n_parallel(p, t);
+            second.playout_n_parallel(p, t);
+            println!("Starting {i} {j} game");
+            loop {
+                let current_player = first.tree().root_state().current_player();
+                let best_move = match current_player {
+                    Player::One => first.best_move(),
+                    Player::Two => second.best_move(),
+                };
+
+                if let Some(best_move) = best_move {
+                    first.advance(&best_move);
+                    second.advance(&best_move);
+                    first.playout_n_parallel(p, t);
+                    second.playout_n_parallel(p, t);
                 } else {
-                    if i & 1 == 0 {
-                        second_wins += 1;
+                    if first.tree().root_state().won(Player::One) {
+                        if j == 0 {
+                            first_result = Some(Player::One);
+                        } else {
+                            second_result = Some(Player::Two);
+                        }
                     } else {
-                        first_wins += 1;
+                        if j == 0 {
+                            first_result = Some(Player::Two);
+                        } else {
+                            second_result = Some(Player::One);
+                        }
                     }
+                    break;
                 }
-                break;
             }
         }
+        assert!(first_result.is_some() && second_result.is_some());
+        if first_result == second_result {
+            match first_result {
+                Some(Player::One) => {
+                    first_wins += 1;
+                }
+                Some(Player::Two) => {
+                    second_wins += 1;
+                }
+                None => unreachable!(),
+            }
+        } else {
+            draws += 1;
+        }
     }
-    println!("{first_wins}, {second_wins}");
+    let after = Instant::now();
+    println!("time {:?}", (after - before).as_secs_f64());
+    println!("One W: {first_wins}, Two W :{second_wins}, D: {draws}");
 }

@@ -4,7 +4,7 @@ use std::{
 };
 
 use itertools::Itertools;
-use rand::{seq::IteratorRandom, thread_rng};
+use rand::{seq::IteratorRandom, thread_rng, Rng};
 use smallvec::SmallVec;
 
 use crate::{
@@ -19,6 +19,7 @@ pub struct Tree<M: MCTS, const N: usize> {
     policy: M::Select,
     eval: M::Eval,
     manager: M,
+    config: SearchConfig<M>,
 
     num_nodes: AtomicUsize,
     expansion_contention_events: AtomicUsize,
@@ -26,7 +27,13 @@ pub struct Tree<M: MCTS, const N: usize> {
 
 impl<M: MCTS, const N: usize> Tree<M, N> {
     #[must_use]
-    pub fn new(state: M::State, manager: M, policy: M::Select, eval: M::Eval) -> Self {
+    pub fn new(
+        state: M::State,
+        manager: M,
+        policy: M::Select,
+        eval: M::Eval,
+        config: SearchConfig<M>,
+    ) -> Self {
         let knowledge = core::array::from_fn(|i| state.knowledge_from_state(Player::<M>::from(i)));
         Self {
             roots: core::array::from_fn(|_| Node::new(&eval, &state, None)),
@@ -37,6 +44,7 @@ impl<M: MCTS, const N: usize> Tree<M, N> {
             manager,
             num_nodes: 1.into(),
             expansion_contention_events: 0.into(),
+            config,
         }
     }
 
@@ -188,7 +196,7 @@ impl<M: MCTS, const N: usize> Tree<M, N> {
         }
 
         // Rollout
-        let rollout_eval = Self::rollout(&mut state, &self.eval, Some(20));
+        let rollout_eval = Self::rollout(&mut state, &self.eval, &self.config);
         // Backprop
         for (idx, _) in nodes.iter().enumerate() {
             self.backpropagation(&path_indices[idx], &node_path[idx], &players, &rollout_eval);
@@ -215,17 +223,46 @@ impl<M: MCTS, const N: usize> Tree<M, N> {
     }
 
     #[must_use]
-    fn rollout(
-        state: &mut M::State,
-        eval: &M::Eval,
-        rollout_length: Option<usize>,
-    ) -> StateEval<M> {
-        let rollout_length = rollout_length.unwrap_or(usize::MAX);
-        (0..rollout_length).for_each(|_| {
-            if let Some(mv) = state.legal_moves().into_iter().choose(&mut thread_rng()) {
+    fn rollout(state: &mut M::State, eval: &M::Eval, config: &SearchConfig<M>) -> StateEval<M> {
+        let mut rng = thread_rng();
+        let rollout_length = config.fet.unwrap_or(usize::MAX);
+        for _ in 1..=rollout_length {
+            let mv = match config.ege {
+                // Choose random move with probability e else choose move with best eval
+                Some(e) => {
+                    let e = e.clamp(0.0, 1.0);
+                    let moves = state.legal_moves();
+                    if rng.gen_bool(e as f64) {
+                        moves.into_iter().choose(&mut rng)
+                    } else {
+                        // NOTE this is pretty slow. if we required undo move functionality in game state
+                        // this could be done without cloning
+                        moves.into_iter().max_by_key(|mv| {
+                            let mut new_state = state.clone();
+                            new_state.make_move(mv);
+                            eval.eval_new(state, None)
+                        })
+                    }
+                }
+                // Choose random move
+                None => state.legal_moves().into_iter().choose(&mut rng),
+            };
+            if let Some(mv) = mv {
                 state.make_move(&mv);
+                // if let Some((threshold, interval)) = config.det {
+                //     if i % interval == 0 {
+                //         let eval = eval.eval_new(state, None);
+                //         if eval > threshold {
+                //             // TODO return win
+                //         } else if eval < -threshold {
+                //             // TODO return loss
+                //         }
+                //     }
+                // }
+            } else {
+                break;
             }
-        });
+        }
         eval.eval_new(state, None)
     }
 
@@ -406,6 +443,51 @@ impl<M: MCTS, const N: usize> Tree<M, N> {
     {
         for k in &self.knowledge {
             println!("{k:?}");
+        }
+    }
+}
+
+#[derive(Clone)]
+pub enum MoveSelection {
+    Max,
+    Robust,
+    RobustMax,
+}
+
+#[derive(Clone)]
+pub struct SearchConfig<M: MCTS> {
+    // Best Move Selection
+    // Max -> Highest Value
+    // Robust -> Most visited
+    // Robust-Max -> Most visited + highest value.
+    // NOTE This is not always available, so more simulations need to be played until a robust-max is found
+    pub best: MoveSelection,
+    // Fixed Early Termination
+    // Fixed depth for playouts
+    pub fet: Option<usize>,
+    // Dynmic Early Termination
+    // Periodically check evaluation function and terminate if some condition is met
+    pub det: Option<(StateEval<M>, usize)>,
+    // e-Greedy Playouts
+    // 0.0 < e < 1.0. Choose random move with probablity e and move with highest eval 1-e
+    pub ege: Option<f32>,
+    // TODO
+    // Improved Playout Policy
+    // Don't choose random moves but have a faster eval function to choose moves in playouts
+    // Implicit Minimax Backups
+    // Progressive Bias
+    // Modify selection Q by adding f(n_i) = H_i/n_i+1
+    // where i is the i'th node, H is a heuristic function and n is the number of visits
+    // Partial Expansion
+}
+
+impl<M: MCTS> Default for SearchConfig<M> {
+    fn default() -> Self {
+        Self {
+            best: MoveSelection::Robust,
+            fet: None,
+            det: None,
+            ege: None,
         }
     }
 }
