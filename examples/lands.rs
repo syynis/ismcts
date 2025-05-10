@@ -598,7 +598,7 @@ fn main() {
     let mut first_wins = 0;
     let mut second_wins = 0;
     let mut draws = 0;
-    let p = 50_000;
+    let p = 5_000;
     let t = 8;
     let config = SearchConfig {
         best: search::MoveSelection::Robust,
@@ -627,8 +627,13 @@ fn main() {
                 Manager::new(LandsGame::new(seed), AI, UCTPolicy(17.5), GameEval, c);
             let mut second: Manager<AI, 2> =
                 Manager::new(LandsGame::new(seed), AI, UCTPolicy(17.5), GameEval, c2);
-            first.playout_n_parallel(p, t);
-            second.playout_n_parallel(p, t);
+            if j == 0 {
+                first.playout_n_parallel(p, t);
+                second.playout_n_parallel(100, t);
+            } else {
+                first.playout_n_parallel(100, t);
+                second.playout_n_parallel(p, t);
+            }
             println!("Starting {i} {j} game");
             loop {
                 let current_player = first.tree().root_state().current_player();
@@ -640,8 +645,16 @@ fn main() {
                 if let Some(best_move) = best_move {
                     first.advance(&best_move);
                     second.advance(&best_move);
-                    first.playout_n_parallel(p, t);
-                    second.playout_n_parallel(p, t);
+                    match first.tree().root_state().current_player() {
+                        Player::One => {
+                            first.playout_n_parallel(p, t);
+                            second.playout_n_parallel(100, t);
+                        }
+                        Player::Two => {
+                            first.playout_n_parallel(100, t);
+                            second.playout_n_parallel(p, t);
+                        }
+                    }
                 } else {
                     if first.tree().root_state().won(Player::One) {
                         if j == 0 {
