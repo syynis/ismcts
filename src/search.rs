@@ -103,13 +103,12 @@ impl<M: MCTS, const N: usize> Tree<M, N> {
 
         // Select
         loop {
-            let legal_moves = state.legal_moves();
+            let legal_moves: Vec<_> = state.legal_moves().into_iter().collect();
             let to_move = state.current_player();
             let to_move_idx: usize = to_move.into();
             let target_node: &Node<M> = nodes[to_move_idx];
 
-            let no_legal_moves = legal_moves.clone().into_iter().count() == 0;
-            if no_legal_moves {
+            if legal_moves.is_empty() {
                 break;
             }
 
@@ -117,9 +116,10 @@ impl<M: MCTS, const N: usize> Tree<M, N> {
             let untried = {
                 let node_moves = target_node.moves.read().unwrap();
                 legal_moves
-                    .clone()
-                    .into_iter()
-                    .filter(|lmv| node_moves.is_empty() || !node_moves.iter().any(|c| c.mv == *lmv))
+                    .iter()
+                    .filter(|lmv| {
+                        node_moves.is_empty() || !node_moves.iter().any(|c| c.mv == **lmv)
+                    })
                     .collect_vec()
             };
             let any_untried = !untried.is_empty();
@@ -128,7 +128,7 @@ impl<M: MCTS, const N: usize> Tree<M, N> {
             let choice_mv = if any_untried {
                 let mut node_moves = target_node.moves.write().unwrap();
                 let choice = untried.into_iter().choose(&mut thread_rng()).unwrap();
-                node_moves.push(MoveInfo::new(choice));
+                node_moves.push(MoveInfo::new(choice.clone()));
                 let choice = node_moves.last().unwrap();
                 choice.stats.down(&self.manager);
                 choice.mv.clone()
@@ -137,9 +137,8 @@ impl<M: MCTS, const N: usize> Tree<M, N> {
                 // Get the children corresponding to all legal moves
                 let moves = {
                     legal_moves
-                        .clone()
-                        .into_iter()
-                        .filter_map(|mv| node_moves.iter().find(|child_mv| child_mv.mv == mv))
+                        .iter()
+                        .filter_map(|mv| node_moves.iter().find(|child_mv| child_mv.mv == *mv))
                         .collect_vec()
                 };
                 // We know there are no untried moves and there is at least one legal move.
@@ -177,9 +176,8 @@ impl<M: MCTS, const N: usize> Tree<M, N> {
                 {
                     let node_moves = node.moves.read().unwrap();
                     legal_moves
-                        .clone()
-                        .into_iter()
-                        .filter_map(|mv| node_moves.iter().find(|child_mv| child_mv.mv == mv))
+                        .iter()
+                        .filter_map(|mv| node_moves.iter().find(|child_mv| child_mv.mv == *mv))
                         .for_each(|m| m.stats.increment_available());
                 }
                 // Expand
