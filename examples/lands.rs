@@ -598,13 +598,13 @@ fn main() {
     let mut first_wins = 0;
     let mut second_wins = 0;
     let mut draws = 0;
-    let p = 5_000;
-    let t = 8;
+    let time = 0.01;
+    let threads = 8;
     let config = SearchConfig {
         best: search::MoveSelection::Robust,
-        fet: Some(15),
+        fet: Some(10),
         det: None,
-        ege: Some(0.2),
+        ege: Some(0.5),
     };
     let config2 = SearchConfig {
         best: search::MoveSelection::Robust,
@@ -613,26 +613,26 @@ fn main() {
         ege: None,
     };
     let before = Instant::now();
-    for i in 0..50 {
+    for i in 0..100 {
         let mut first_result = None;
         let mut second_result = None;
+        let seed = thread_rng().gen::<u64>();
         for j in 0..2 {
             let (c, c2) = if j == 0 {
                 (config.clone(), config2.clone())
             } else {
                 (config2.clone(), config.clone())
             };
-            let seed = thread_rng().gen::<u64>();
             let mut first: Manager<AI, 2> =
                 Manager::new(LandsGame::new(seed), AI, UCTPolicy(17.5), GameEval, c);
             let mut second: Manager<AI, 2> =
                 Manager::new(LandsGame::new(seed), AI, UCTPolicy(17.5), GameEval, c2);
             if j == 0 {
-                first.playout_n_parallel(p, t);
-                second.playout_n_parallel(100, t);
+                first.playout_parallel_for(time, threads);
+                second.playout_n_parallel(100, threads);
             } else {
-                first.playout_n_parallel(100, t);
-                second.playout_n_parallel(p, t);
+                first.playout_n_parallel(100, threads);
+                second.playout_parallel_for(time, threads);
             }
             println!("Starting {i} {j} game");
             loop {
@@ -647,12 +647,12 @@ fn main() {
                     second.advance(&best_move);
                     match first.tree().root_state().current_player() {
                         Player::One => {
-                            first.playout_n_parallel(p, t);
-                            second.playout_n_parallel(100, t);
+                            first.playout_parallel_for(time, threads);
+                            second.playout_n_parallel(100, threads);
                         }
                         Player::Two => {
-                            first.playout_n_parallel(100, t);
-                            second.playout_n_parallel(p, t);
+                            first.playout_n_parallel(100, threads);
+                            second.playout_parallel_for(time, threads);
                         }
                     }
                 } else {

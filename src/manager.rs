@@ -1,4 +1,7 @@
-use std::sync::atomic::{AtomicIsize, Ordering};
+use std::{
+    sync::atomic::{AtomicIsize, Ordering},
+    time::Instant,
+};
 
 use itertools::Itertools;
 
@@ -50,9 +53,9 @@ where
 
         let counter = AtomicIsize::new(n as isize);
         let search_tree = &self.search_tree;
-        let _ = crossbeam::scope(|scope| {
+        std::thread::scope(|scope| {
             (0..num_threads).for_each(|_| {
-                scope.spawn(|_| {
+                scope.spawn(|| {
                     let mut tld = ThreadData::default();
                     loop {
                         let count = counter.fetch_sub(1, Ordering::SeqCst);
@@ -60,6 +63,27 @@ where
                             break;
                         }
                         let _ = search_tree.playout(&mut tld);
+                    }
+                });
+            });
+        });
+    }
+
+    pub fn playout_parallel_for(&mut self, time: f32, num_threads: usize) {
+        if num_threads == 0 {
+            return;
+        }
+        std::thread::scope(|scope| {
+            (0..num_threads).for_each(|_| {
+                scope.spawn(|| {
+                    let mut tld = ThreadData::default();
+                    let start = Instant::now();
+                    loop {
+                        let duration = start.elapsed();
+                        if duration.as_secs_f32() > time {
+                            break;
+                        }
+                        let _ = self.search_tree.playout(&mut tld);
                     }
                 });
             });
