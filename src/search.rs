@@ -224,7 +224,7 @@ impl<M: MCTS, const N: usize> Tree<M, N> {
     fn rollout(state: &mut M::State, eval: &M::Eval, config: &SearchConfig<M>) -> StateEval<M> {
         let mut rng = thread_rng();
         let rollout_length = config.fet.unwrap_or(usize::MAX);
-        for _ in 1..=rollout_length {
+        for i in 1..=rollout_length {
             let mv = match config.ege {
                 // Choose random move with probability e else choose move with best eval
                 Some(e) => {
@@ -247,16 +247,16 @@ impl<M: MCTS, const N: usize> Tree<M, N> {
             };
             if let Some(mv) = mv {
                 state.make_move(&mv);
-                // if let Some((threshold, interval)) = config.det {
-                //     if i % interval == 0 {
-                //         let eval = eval.eval_new(state, None);
-                //         if eval > threshold {
-                //             // TODO return win
-                //         } else if eval < -threshold {
-                //             // TODO return loss
-                //         }
-                //     }
-                // }
+                if let Some((threshold, interval)) = config.det.clone() {
+                    if i % interval == 0 {
+                        let eval = eval.eval_new(state, None);
+                        if eval > threshold {
+                            return M::Eval::WIN;
+                        } else if eval < M::Eval::negate(&threshold) {
+                            return M::Eval::negate(&M::Eval::WIN);
+                        }
+                    }
+                }
             } else {
                 break;
             }

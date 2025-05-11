@@ -532,6 +532,7 @@ struct GameEval;
 
 impl Evaluator<AI> for GameEval {
     type StateEval = i64;
+    const WIN: StateEval<AI> = 1000;
 
     fn eval_new(
         &self,
@@ -561,7 +562,8 @@ impl Evaluator<AI> for GameEval {
                 .values()
                 .sum::<u8>() as i64
             - state.hand(state.opponent()).values().sum::<u8>() as i64;
-        devotion * 2 + domain * 2 + card_advantage * 3 + won
+        let eval = devotion * 2 + domain * 2 + card_advantage * 3 + won;
+        eval
     }
 
     fn eval_existing(
@@ -578,6 +580,10 @@ impl Evaluator<AI> for GameEval {
             Player::One => *eval,
             Player::Two => -*eval,
         }
+    }
+
+    fn negate(eval: &Self::StateEval) -> Self::StateEval {
+        -eval
     }
 }
 
@@ -598,7 +604,7 @@ fn main() {
     let mut first_wins = 0;
     let mut second_wins = 0;
     let mut draws = 0;
-    let time = 0.01;
+    let time = 0.005;
     let threads = 8;
     let config = SearchConfig {
         best: search::MoveSelection::Robust,
@@ -608,12 +614,12 @@ fn main() {
     };
     let config2 = SearchConfig {
         best: search::MoveSelection::Robust,
-        fet: None,
+        fet: Some(50),
         det: None,
-        ege: None,
+        ege: Some(0.5),
     };
     let before = Instant::now();
-    for i in 0..100 {
+    for i in 0..50 {
         let mut first_result = None;
         let mut second_result = None;
         let seed = thread_rng().gen::<u64>();

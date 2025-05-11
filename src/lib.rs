@@ -58,6 +58,7 @@ pub trait GameState: Clone {
 
 pub trait Evaluator<M: MCTS>: Sync {
     type StateEval: Sync + Send + Ord + Clone;
+    const WIN: StateEval<M>;
 
     fn eval_new(&self, state: &M::State, handle: Option<SearchHandle<M>>) -> Self::StateEval;
     fn eval_existing(
@@ -67,6 +68,7 @@ pub trait Evaluator<M: MCTS>: Sync {
         handle: SearchHandle<M>,
     ) -> Self::StateEval;
     fn make_relative(&self, eval: &Self::StateEval, player: &Player<M>) -> i64;
+    fn negate(eval: &Self::StateEval) -> Self::StateEval;
 }
 
 pub trait Policy<M: MCTS<Select = Self>>: Sync + Sized {
