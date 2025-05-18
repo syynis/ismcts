@@ -3,7 +3,6 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use itertools::Itertools;
 use rand::{seq::IteratorRandom, thread_rng, Rng};
 use smallvec::SmallVec;
 
@@ -120,14 +119,12 @@ impl<M: MCTS, const N: usize> Tree<M, N> {
                     .filter(|lmv| {
                         node_moves.is_empty() || !node_moves.iter().any(|c| c.mv == **lmv)
                     })
-                    .collect_vec()
+                    .choose(&mut thread_rng())
             };
-            let any_untried = !untried.is_empty();
 
             // Select
-            let choice_mv = if any_untried {
+            let choice_mv = if let Some(choice) = untried {
                 let mut node_moves = target_node.moves.write().unwrap();
-                let choice = untried.into_iter().choose(&mut thread_rng()).unwrap();
                 node_moves.push(MoveInfo::new(choice.clone()));
                 let choice = node_moves.last().unwrap();
                 choice.stats.down(&self.manager);
@@ -139,15 +136,12 @@ impl<M: MCTS, const N: usize> Tree<M, N> {
                     legal_moves
                         .iter()
                         .filter_map(|mv| node_moves.iter().find(|child_mv| child_mv.mv == *mv))
-                        .collect_vec()
                 };
                 // We know there are no untried moves and there is at least one legal move.
                 // This means all legal moves have been expanded once already
-                assert!(!moves.is_empty());
-
                 let choice = self
                     .policy
-                    .choose(moves.iter().copied(), self.make_handle(target_node, tld))
+                    .choose(moves, self.make_handle(target_node, tld))
                     .1;
                 choice.stats.down(&self.manager);
                 choice.mv.clone()
@@ -188,7 +182,7 @@ impl<M: MCTS, const N: usize> Tree<M, N> {
                 new_node
             });
             nodes = new_nodes;
-            if any_untried {
+            if untried.is_some() {
                 break;
             }
         }
